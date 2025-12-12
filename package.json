@@ -1,0 +1,22 @@
+
+{
+  "name": "Roxy-tests",
+  "version": "1.0.0",
+  "description": "Run unit tests on this project.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:report": "vitest run -- --coverage --costs",
+    "test:watch": "chokidar \"tests/**/*.ts\" \"contracts/**/*.clar\" -c \"npm run test:report\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@stacks/clarinet-sdk": "^3.10.0",
+    "@stacks/transactions": "^7.0.6",
+    "chokidar-cli": "^3.0.0",
+    "vitest": "^4.0.0",
+    "vitest-environment-clarinet": "3.0.2"
+  }
+}
