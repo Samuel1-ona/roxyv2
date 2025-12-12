@@ -16,6 +16,32 @@
 (define-constant PROTOCOL_FEE_BPS u200) ;; 2% = 200 basis points
 (define-constant BPS_DENOMINATOR u10000)
 
+;; error constants
+(define-constant ERR-USER-ALREADY-REGISTERED (err u1))
+(define-constant ERR-NOT-ADMIN (err u2))
+(define-constant ERR-EVENT-ID-EXISTS (err u3))
+(define-constant ERR-INVALID-AMOUNT (err u4))
+(define-constant ERR-EVENT-NOT-OPEN (err u5))
+(define-constant ERR-INSUFFICIENT-POINTS (err u6))
+(define-constant ERR-USER-NOT-REGISTERED (err u7))
+(define-constant ERR-EVENT-NOT-FOUND (err u8))
+(define-constant ERR-EVENT-MUST-BE-OPEN (err u9))
+(define-constant ERR-EVENT-MUST-BE-RESOLVED (err u10))
+(define-constant ERR-NO-WINNERS (err u11))
+(define-constant ERR-NO-STAKE-FOUND (err u12))
+(define-constant ERR-WINNER-NOT-SET (err u13))
+(define-constant ERR-INSUFFICIENT-EARNED-POINTS (err u14))
+(define-constant ERR-LISTING-NOT-ACTIVE (err u15))
+(define-constant ERR-LISTING-NOT-FOUND (err u16))
+(define-constant ERR-ONLY-SELLER-CAN-CANCEL (err u17))
+(define-constant ERR-INSUFFICIENT-AVAILABLE-POINTS (err u18))
+(define-constant ERR-GUILD-ID-EXISTS (err u19))
+(define-constant ERR-GUILD-NOT-FOUND (err u20))
+(define-constant ERR-ALREADY-A-MEMBER (err u21))
+(define-constant ERR-NOT-A-MEMBER (err u22))
+(define-constant ERR-HAS-DEPOSITS (err u23))
+(define-constant ERR-INSUFFICIENT-DEPOSITS (err u24))
+
 ;; data vars
 (define-data-var admin principal tx-sender)
 (define-data-var next-event-id uint u1)
@@ -120,12 +146,12 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u1) if user already registered
+;;   - ERR-USER-ALREADY-REGISTERED if user already registered
 ;; ============================================================================
 (define-public (register (username (string-ascii 50)))
     (let ((user tx-sender))
         (match (map-get? user-points user)
-            existing (err u1) ;; User already registered
+            existing ERR-USER-ALREADY-REGISTERED ;; User already registered
             (begin
                 (map-set user-points user STARTING_POINTS)
                 (map-set earned-points user u0) ;; Starting points don't count as earned
@@ -179,14 +205,14 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u2) if caller is not admin
-;;   - (err u3) if event ID already exists
+;;   - ERR-NOT-ADMIN if caller is not admin
+;;   - ERR-EVENT-ID-EXISTS if event ID already exists
 ;; ============================================================================
 (define-public (create-event (event-id uint) (metadata (string-ascii 200)))
     (let ((caller tx-sender))
-        (asserts! (is-eq caller (var-get admin)) (err u2)) ;; Only admin can create events
+        (asserts! (is-eq caller (var-get admin)) ERR-NOT-ADMIN) ;; Only admin can create events
         (match (map-get? events event-id)
-            existing (err u3) ;; Event ID already exists
+            existing ERR-EVENT-ID-EXISTS ;; Event ID already exists
             (begin
                 (map-set events event-id {
                     yes-pool: u0,
@@ -243,21 +269,21 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u5) if event is not open
-;;   - (err u6) if insufficient points
-;;   - (err u7) if user not registered
-;;   - (err u8) if event not found
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-EVENT-NOT-OPEN if event is not open
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-USER-NOT-REGISTERED if user not registered
+;;   - ERR-EVENT-NOT-FOUND if event not found
 ;; ============================================================================
 (define-public (stake-yes (event-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? events event-id)
             event (begin
-                    (asserts! (is-eq (get status event) "open") (err u5)) ;; Event must be open
+                    (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN) ;; Event must be open
                     (match (map-get? user-points user)
                         current-points (begin
-                                (asserts! (>= current-points amount) (err u6)) ;; Insufficient points
+                                (asserts! (>= current-points amount) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
                                 ;; Deduct points from user
                                 (map-set user-points user (- current-points amount))
                                 ;; Add to YES pool
@@ -321,10 +347,10 @@
                                     (ok true)
                                 )
                             )
-                        (err u7) ;; User not registered
+                        ERR-USER-NOT-REGISTERED ;; User not registered
                     )
             )
-            (err u8) ;; Event not found
+            ERR-EVENT-NOT-FOUND ;; Event not found
         )
     )
 )
@@ -348,21 +374,21 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u5) if event is not open
-;;   - (err u6) if insufficient points
-;;   - (err u7) if user not registered
-;;   - (err u8) if event not found
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-EVENT-NOT-OPEN if event is not open
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-USER-NOT-REGISTERED if user not registered
+;;   - ERR-EVENT-NOT-FOUND if event not found
 ;; ============================================================================
 (define-public (stake-no (event-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? events event-id)
             event (begin
-                    (asserts! (is-eq (get status event) "open") (err u5)) ;; Event must be open
+                    (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN) ;; Event must be open
                     (match (map-get? user-points user)
                         current-points (begin
-                                (asserts! (>= current-points amount) (err u6)) ;; Insufficient points
+                                (asserts! (>= current-points amount) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
                                 ;; Deduct points from user
                                 (map-set user-points user (- current-points amount))
                                 ;; Add to NO pool
@@ -426,10 +452,10 @@
                                     (ok true)
                                 )
                             )
-                        (err u7) ;; User not registered
+                        ERR-USER-NOT-REGISTERED ;; User not registered
                     )
             )
-            (err u8) ;; Event not found
+            ERR-EVENT-NOT-FOUND ;; Event not found
         )
     )
 )
@@ -454,16 +480,16 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u2) if caller is not admin
-;;   - (err u8) if event not found
-;;   - (err u9) if event must be open to resolve
+;;   - ERR-NOT-ADMIN if caller is not admin
+;;   - ERR-EVENT-NOT-FOUND if event not found
+;;   - ERR-EVENT-MUST-BE-OPEN if event must be open to resolve
 ;; ============================================================================
 (define-public (resolve-event (event-id uint) (winner bool))
     (let ((caller tx-sender))
-        (asserts! (is-eq caller (var-get admin)) (err u2)) ;; Only admin can resolve
+        (asserts! (is-eq caller (var-get admin)) ERR-NOT-ADMIN) ;; Only admin can resolve
         (match (map-get? events event-id)
             event (begin
-                    (asserts! (is-eq (get status event) "open") (err u9)) ;; Event must be open to resolve
+                    (asserts! (is-eq (get status event) "open") ERR-EVENT-MUST-BE-OPEN) ;; Event must be open to resolve
                     (let ((yes-pool (get yes-pool event))
                           (no-pool (get no-pool event)))
                         (map-set events event-id {
@@ -490,7 +516,7 @@
                         (ok true)
                     )
             )
-            (err u8) ;; Event not found
+            ERR-EVENT-NOT-FOUND ;; Event not found
         )
     )
 )
@@ -526,18 +552,18 @@
 ;;
 ;; Returns:
 ;;   - (ok reward) with reward amount on success
-;;   - (err u7) if user not registered
-;;   - (err u8) if event not found
-;;   - (err u10) if event must be resolved
-;;   - (err u11) if no winners (pool is empty)
-;;   - (err u12) if no stake found
-;;   - (err u13) if winner not set
+;;   - ERR-USER-NOT-REGISTERED if user not registered
+;;   - ERR-EVENT-NOT-FOUND if event not found
+;;   - ERR-EVENT-MUST-BE-RESOLVED if event must be resolved
+;;   - ERR-NO-WINNERS if no winners (pool is empty)
+;;   - ERR-NO-STAKE-FOUND if no stake found
+;;   - ERR-WINNER-NOT-SET if winner not set
 ;; ============================================================================
 (define-public (claim (event-id uint))
     (let ((user tx-sender))
         (match (map-get? events event-id)
             event (begin
-                    (asserts! (is-eq (get status event) "resolved") (err u10)) ;; Event must be resolved
+                    (asserts! (is-eq (get status event) "resolved") ERR-EVENT-MUST-BE-RESOLVED) ;; Event must be resolved
                     (match (get winner event)
                         winner (begin
                                 (let ((yes-pool (get yes-pool event))
@@ -545,7 +571,7 @@
                                       (total-pool (+ yes-pool no-pool))
                                       (winning-pool (if winner yes-pool no-pool)))
                                     (if (is-eq winning-pool u0)
-                                        (err u11) ;; No winners (pool is empty)
+                                        ERR-NO-WINNERS ;; No winners (pool is empty)
                                         (begin
                                             (if winner
                                                 ;; User staked YES
@@ -669,7 +695,7 @@
                                                                                     )
                                                                                 )
                                                                             )
-                                                                        (err u7) ;; User not registered
+                                                                        ERR-USER-NOT-REGISTERED ;; User not registered
                                                                     )
                                                                 )
                                                                 (begin
@@ -705,17 +731,17 @@
                                                                                             win-rate: u0
                                                                                         })
                                                                                     )
-                                                                                    (err u12) ;; Lost (stake cleared)
+                                                                                    ERR-NO-STAKE-FOUND ;; Lost (stake cleared)
                                                                                 )
-                                                                                (err u12) ;; No stake found
+                                                                                ERR-NO-STAKE-FOUND ;; No stake found
                                                                             )
                                                                         )
-                                                                        (err u12) ;; No stake found
+                                                                        ERR-NO-STAKE-FOUND ;; No stake found
                                                                     )
                                                                 )
                                                             )
                                                         )
-                                                    (err u12) ;; No stake found
+                                                    ERR-NO-STAKE-FOUND ;; No stake found
                                                 )
                                                 ;; User staked NO
                                                 (match (map-get? no-stakes (tuple (event-id event-id) (user user)))
@@ -838,7 +864,7 @@
                                                                                     )
                                                                                 )
                                                                             )
-                                                                        (err u7) ;; User not registered
+                                                                        ERR-USER-NOT-REGISTERED ;; User not registered
                                                                     )
                                                                 )
                                                                 (begin
@@ -874,27 +900,27 @@
                                                                                             win-rate: u0
                                                                                         })
                                                                                     )
-                                                                                    (err u12) ;; Lost (stake cleared)
+                                                                                    ERR-NO-STAKE-FOUND ;; Lost (stake cleared)
                                                                                 )
-                                                                                (err u12) ;; No stake found
+                                                                                ERR-NO-STAKE-FOUND ;; No stake found
                                                                             )
                                                                         )
-                                                                        (err u12) ;; No stake found
+                                                                        ERR-NO-STAKE-FOUND ;; No stake found
                                                                     )
                                                                 )
                                                             )
                                                         )
-                                                    (err u12) ;; No stake found
+                                                    ERR-NO-STAKE-FOUND ;; No stake found
                                                 )
                                             )
                                         )
                                     )
                                 )
                             )
-                        (err u13) ;; Winner not set
+                        ERR-WINNER-NOT-SET ;; Winner not set
                     )
             )
-            (err u8) ;; Event not found
+            ERR-EVENT-NOT-FOUND ;; Event not found
         )
     )
 )
@@ -926,22 +952,22 @@
 ;;
 ;; Returns:
 ;;   - (ok listing-id) with the new listing ID on success
-;;   - (err u4) if points or price <= 0
-;;   - (err u6) if insufficient points
-;;   - (err u7) if user not registered
-;;   - (err u14) if must have earned >= 10,000 points
+;;   - ERR-INVALID-AMOUNT if points or price <= 0
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-USER-NOT-REGISTERED if user not registered
+;;   - ERR-INSUFFICIENT-EARNED-POINTS if must have earned >= 10,000 points
 ;; ============================================================================
 (define-public (create-listing (points uint) (price-stx uint))
     (let ((seller tx-sender))
-        (asserts! (> points u0) (err u4)) ;; Points must be greater than 0
-        (asserts! (> price-stx u0) (err u4)) ;; Price must be greater than 0
+        (asserts! (> points u0) ERR-INVALID-AMOUNT) ;; Points must be greater than 0
+        (asserts! (> price-stx u0) ERR-INVALID-AMOUNT) ;; Price must be greater than 0
         ;; Check if user can sell (earned-points >= 10,000)
         (match (map-get? earned-points seller)
             earned (begin
-                    (asserts! (>= earned MIN_EARNED_FOR_SELL) (err u14)) ;; Must have earned at least 10,000 points
+                    (asserts! (>= earned MIN_EARNED_FOR_SELL) ERR-INSUFFICIENT-EARNED-POINTS) ;; Must have earned at least 10,000 points
                     (match (map-get? user-points seller)
                         current-points (begin
-                                (asserts! (>= current-points points) (err u6)) ;; Insufficient points
+                                (asserts! (>= current-points points) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
                                 ;; Transfer STX listing fee to contract
                                 (try! (stx-transfer? LISTING_FEE seller (as-contract tx-sender)))
                                 ;; Lock seller's points by deducting them
@@ -978,10 +1004,10 @@
                                     (ok listing-id)
                                 )
                             )
-                        (err u7) ;; User not registered
+                        ERR-USER-NOT-REGISTERED ;; User not registered
                     )
             )
-            (err u14) ;; Must have earned at least 10,000 points
+            ERR-INSUFFICIENT-EARNED-POINTS ;; Must have earned at least 10,000 points
         )
     )
 )
@@ -1018,21 +1044,21 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if points-to-buy <= 0
-;;   - (err u15) if listing not active
-;;   - (err u16) if listing not found
-;;   - (err u18) if points-to-buy > available points
+;;   - ERR-INVALID-AMOUNT if points-to-buy <= 0
+;;   - ERR-LISTING-NOT-ACTIVE if listing not active
+;;   - ERR-LISTING-NOT-FOUND if listing not found
+;;   - ERR-INSUFFICIENT-AVAILABLE-POINTS if points-to-buy > available points
 ;; ============================================================================
 (define-public (buy-listing (listing-id uint) (points-to-buy uint))
     (let ((buyer tx-sender))
-        (asserts! (> points-to-buy u0) (err u4)) ;; Points to buy must be greater than 0
+        (asserts! (> points-to-buy u0) ERR-INVALID-AMOUNT) ;; Points to buy must be greater than 0
         (match (map-get? listings listing-id)
             listing (begin
-                    (asserts! (get active listing) (err u15)) ;; Listing must be active
+                    (asserts! (get active listing) ERR-LISTING-NOT-ACTIVE) ;; Listing must be active
                     (let ((seller (get seller listing))
                           (total-points (get points listing))
                           (total-price-stx (get price-stx listing)))
-                        (asserts! (>= total-points points-to-buy) (err u18)) ;; Not enough points available
+                        (asserts! (>= total-points points-to-buy) ERR-INSUFFICIENT-AVAILABLE-POINTS) ;; Not enough points available
                         ;; Calculate proportional price
                         (let ((price-per-point (/ total-price-stx total-points))
                               (actual-price-stx (* price-per-point points-to-buy))
@@ -1093,7 +1119,7 @@
                         )
                     )
             )
-            (err u16) ;; Listing not found
+            ERR-LISTING-NOT-FOUND ;; Listing not found
         )
     )
 )
@@ -1118,16 +1144,16 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u15) if listing not active
-;;   - (err u16) if listing not found
-;;   - (err u17) if only seller can cancel
+;;   - ERR-LISTING-NOT-ACTIVE if listing not active
+;;   - ERR-LISTING-NOT-FOUND if listing not found
+;;   - ERR-ONLY-SELLER-CAN-CANCEL if only seller can cancel
 ;; ============================================================================
 (define-public (cancel-listing (listing-id uint))
     (let ((caller tx-sender))
         (match (map-get? listings listing-id)
             listing (begin
-                    (asserts! (is-eq caller (get seller listing)) (err u17)) ;; Only seller can cancel
-                    (asserts! (get active listing) (err u15)) ;; Listing must be active
+                    (asserts! (is-eq caller (get seller listing)) ERR-ONLY-SELLER-CAN-CANCEL) ;; Only seller can cancel
+                    (asserts! (get active listing) ERR-LISTING-NOT-ACTIVE) ;; Listing must be active
                     (let ((points (get points listing)))
                         ;; Return points to seller
                         (match (map-get? user-points caller)
@@ -1163,7 +1189,7 @@
                         (ok true)
                     )
             )
-            (err u16) ;; Listing not found
+            ERR-LISTING-NOT-FOUND ;; Listing not found
         )
     )
 )
@@ -1187,12 +1213,12 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u19) if guild ID already exists
+;;   - ERR-GUILD-ID-EXISTS if guild ID already exists
 ;; ============================================================================
 (define-public (create-guild (guild-id uint) (name (string-ascii 50)))
     (let ((creator tx-sender))
         (match (map-get? guilds guild-id)
-            existing (err u19) ;; Guild ID already exists
+            existing ERR-GUILD-ID-EXISTS ;; Guild ID already exists
             (begin
                 (map-set guilds guild-id {
                     creator: creator,
@@ -1235,15 +1261,15 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u20) if guild not found
-;;   - (err u21) if already a member
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-ALREADY-A-MEMBER if already a member
 ;; ============================================================================
 (define-public (join-guild (guild-id uint))
     (let ((user tx-sender))
         (match (map-get? guilds guild-id)
             guild (begin
                     (if (is-member? guild-id user)
-                        (err u21) ;; Already a member
+                        ERR-ALREADY-A-MEMBER ;; Already a member
                         (begin
                             (map-set guild-members (tuple (guild-id guild-id) (user user)) true)
                             (map-set guild-deposits (tuple (guild-id guild-id) (user user)) u0)
@@ -1262,7 +1288,7 @@
                         )
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1287,9 +1313,9 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
-;;   - (err u23) if has deposits (must withdraw first)
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
+;;   - ERR-HAS-DEPOSITS if has deposits (must withdraw first)
 ;; ============================================================================
 (define-public (leave-guild (guild-id uint))
     (let ((user tx-sender))
@@ -1314,7 +1340,7 @@
                                         })
                                         (ok true)
                                     )
-                                    (err u23) ;; Has deposits, must withdraw first
+                                    ERR-HAS-DEPOSITS ;; Has deposits, must withdraw first
                                 )
                                 (begin
                                     (map-set guild-members (tuple (guild-id guild-id) (user user)) false)
@@ -1333,10 +1359,10 @@
                                 )
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1364,21 +1390,21 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u6) if insufficient points
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
 ;; ============================================================================
 (define-public (deposit-to-guild (guild-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? guilds guild-id)
             guild (begin
                     (if (is-member? guild-id user)
                         (begin
                             (match (map-get? user-points user)
                                 current-points (begin
-                                    (asserts! (>= current-points amount) (err u6)) ;; Insufficient points
+                                    (asserts! (>= current-points amount) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
                                     ;; Deduct from user
                                     (map-set user-points user (- current-points amount))
                                     ;; Add to guild pool
@@ -1411,13 +1437,13 @@
                                     })
                                     (ok true)
                                 )
-                                (err u7) ;; User not registered
+                                ERR-USER-NOT-REGISTERED ;; User not registered
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1446,23 +1472,23 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u6) if guild has insufficient points
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
-;;   - (err u24) if user has insufficient deposits
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-INSUFFICIENT-POINTS if guild has insufficient points
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
+;;   - ERR-INSUFFICIENT-DEPOSITS if user has insufficient deposits
 ;; ============================================================================
 (define-public (withdraw-from-guild (guild-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? guilds guild-id)
             guild (begin
                     (if (is-member? guild-id user)
                         (begin
                             (match (map-get? guild-deposits (tuple (guild-id guild-id) (user user)))
                                 user-deposit (begin
-                                    (asserts! (>= user-deposit amount) (err u24)) ;; Insufficient deposits
-                                    (asserts! (>= (get total-points guild) amount) (err u6)) ;; Guild has insufficient points
+                                    (asserts! (>= user-deposit amount) ERR-INSUFFICIENT-DEPOSITS) ;; Insufficient deposits
+                                    (asserts! (>= (get total-points guild) amount) ERR-INSUFFICIENT-POINTS) ;; Guild has insufficient points
                                     ;; Deduct from guild pool
                                     (map-set guilds guild-id {
                                         creator: (get creator guild),
@@ -1486,13 +1512,13 @@
                                     })
                                     (ok true)
                                 )
-                                (err u24) ;; No deposits
+                                ERR-INSUFFICIENT-DEPOSITS ;; No deposits
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1522,24 +1548,24 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u5) if event is not open
-;;   - (err u6) if insufficient points
-;;   - (err u8) if event not found
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-EVENT-NOT-OPEN if event is not open
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-EVENT-NOT-FOUND if event not found
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
 ;; ============================================================================
 (define-public (guild-stake-yes (guild-id uint) (event-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? guilds guild-id)
             guild (begin
                     (if (is-member? guild-id user)
                         (begin
-                            (asserts! (>= (get total-points guild) amount) (err u6)) ;; Insufficient guild points
+                            (asserts! (>= (get total-points guild) amount) ERR-INSUFFICIENT-POINTS) ;; Insufficient guild points
                             (match (map-get? events event-id)
                                 event (begin
-                                    (asserts! (is-eq (get status event) "open") (err u5)) ;; Event must be open
+                                    (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN) ;; Event must be open
                                     ;; Deduct from guild pool
                                     (map-set guilds guild-id {
                                         creator: (get creator guild),
@@ -1596,13 +1622,13 @@
                                         (ok true)
                                     )
                                 )
-                                (err u8) ;; Event not found
+                                ERR-EVENT-NOT-FOUND ;; Event not found
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1625,24 +1651,24 @@
 ;;
 ;; Returns:
 ;;   - (ok true) on success
-;;   - (err u4) if amount <= 0
-;;   - (err u5) if event is not open
-;;   - (err u6) if insufficient points
-;;   - (err u8) if event not found
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-EVENT-NOT-OPEN if event is not open
+;;   - ERR-INSUFFICIENT-POINTS if insufficient points
+;;   - ERR-EVENT-NOT-FOUND if event not found
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
 ;; ============================================================================
 (define-public (guild-stake-no (guild-id uint) (event-id uint) (amount uint))
     (let ((user tx-sender))
-        (asserts! (> amount u0) (err u4)) ;; Amount must be greater than 0
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
         (match (map-get? guilds guild-id)
             guild (begin
                     (if (is-member? guild-id user)
                         (begin
-                            (asserts! (>= (get total-points guild) amount) (err u6)) ;; Insufficient guild points
+                            (asserts! (>= (get total-points guild) amount) ERR-INSUFFICIENT-POINTS) ;; Insufficient guild points
                             (match (map-get? events event-id)
                                 event (begin
-                                    (asserts! (is-eq (get status event) "open") (err u5)) ;; Event must be open
+                                    (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN) ;; Event must be open
                                     ;; Deduct from guild pool
                                     (map-set guilds guild-id {
                                         creator: (get creator guild),
@@ -1699,13 +1725,13 @@
                                         (ok true)
                                     )
                                 )
-                                (err u8) ;; Event not found
+                                ERR-EVENT-NOT-FOUND ;; Event not found
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
@@ -1734,13 +1760,13 @@
 ;;
 ;; Returns:
 ;;   - (ok reward) with reward amount on success
-;;   - (err u8) if event not found
-;;   - (err u10) if event must be resolved
-;;   - (err u11) if no winners (pool is empty)
-;;   - (err u12) if no stake found
-;;   - (err u13) if winner not set
-;;   - (err u20) if guild not found
-;;   - (err u22) if not a member
+;;   - ERR-EVENT-NOT-FOUND if event not found
+;;   - ERR-EVENT-MUST-BE-RESOLVED if event must be resolved
+;;   - ERR-NO-WINNERS if no winners (pool is empty)
+;;   - ERR-NO-STAKE-FOUND if no stake found
+;;   - ERR-WINNER-NOT-SET if winner not set
+;;   - ERR-GUILD-NOT-FOUND if guild not found
+;;   - ERR-NOT-A-MEMBER if not a member
 ;; ============================================================================
 (define-public (guild-claim (guild-id uint) (event-id uint))
     (let ((user tx-sender))
@@ -1750,7 +1776,7 @@
                         (begin
                             (match (map-get? events event-id)
                                 event (begin
-                                    (asserts! (is-eq (get status event) "resolved") (err u10)) ;; Event must be resolved
+                                    (asserts! (is-eq (get status event) "resolved") ERR-EVENT-MUST-BE-RESOLVED) ;; Event must be resolved
                                     (match (get winner event)
                                         winner (begin
                                             (let ((yes-pool (get yes-pool event))
@@ -1758,7 +1784,7 @@
                                                   (total-pool (+ yes-pool no-pool))
                                                   (winning-pool (if winner yes-pool no-pool)))
                                                 (if (is-eq winning-pool u0)
-                                                    (err u11) ;; No winners (pool is empty)
+                                                    ERR-NO-WINNERS ;; No winners (pool is empty)
                                                     (begin
                                                         (if winner
                                                             ;; Guild staked YES
@@ -1810,10 +1836,10 @@
                                                                             })
                                                                             (ok reward)
                                                                         )
-                                                                        (err u12) ;; No stake found
+                                                                        ERR-NO-STAKE-FOUND ;; No stake found
                                                                     )
                                                                 )
-                                                                (err u12) ;; No stake found
+                                                                ERR-NO-STAKE-FOUND ;; No stake found
                                                             )
                                                             ;; Guild staked NO
                                                             (match (map-get? guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)))
@@ -1864,26 +1890,26 @@
                                                                             })
                                                                             (ok reward)
                                                                         )
-                                                                        (err u12) ;; No stake found
+                                                                        ERR-NO-STAKE-FOUND ;; No stake found
                                                                     )
                                                                 )
-                                                                (err u12) ;; No stake found
+                                                                ERR-NO-STAKE-FOUND ;; No stake found
                                                             )
                                                         )
                                                     )
                                                 )
                                             )
                                         )
-                                        (err u13) ;; Winner not set
+                                        ERR-WINNER-NOT-SET ;; Winner not set
                                     )
                                 )
-                                (err u8) ;; Event not found
+                                ERR-EVENT-NOT-FOUND ;; Event not found
                             )
                         )
-                        (err u22) ;; Not a member
+                        ERR-NOT-A-MEMBER ;; Not a member
                     )
             )
-            (err u20) ;; Guild not found
+            ERR-GUILD-NOT-FOUND ;; Guild not found
         )
     )
 )
