@@ -41,6 +41,8 @@
 (define-constant ERR-NOT-A-MEMBER (err u22))
 (define-constant ERR-HAS-DEPOSITS (err u23))
 (define-constant ERR-INSUFFICIENT-DEPOSITS (err u24))
+(define-constant ERR-INSUFFICIENT-TREASURY (err u25))
+(define-constant ERR-USERNAME-TAKEN (err u26))
 
 ;; data vars
 (define-data-var admin principal tx-sender)
@@ -57,6 +59,7 @@
 (define-map user-points principal uint)
 (define-map earned-points principal uint) ;; Points earned from predictions (used for selling threshold)
 (define-map user-names principal (string-ascii 50)) ;; User names
+(define-map usernames (string-ascii 50) principal) ;; Track username for uniqueness (username -> user)
 
 ;; Prediction Event Registry
 (define-map events uint {
@@ -134,48 +137,57 @@
 ;; Details:
 ;;   - Takes a username (up to 50 ASCII characters)
 ;;   - Checks if the user is already registered (error u1 if yes)
+;;   - Checks if the username is already taken (error u26 if yes)
 ;;   - Grants 1,000 starting points (non-sellable)
 ;;   - Sets earned-points to 0 (starting points don't count toward selling threshold)
-;;   - Stores the username
+;;   - Stores the username and tracks it for uniqueness
 ;;   - Returns (ok true) on success
 ;;
 ;; Use case: First-time user onboarding.
 ;;
 ;; Parameters:
-;;   - username: (string-ascii 50) - User's chosen username
+;;   - username: (string-ascii 50) - User's chosen username (must be unique)
 ;;
 ;; Returns:
 ;;   - (ok true) on success
 ;;   - ERR-USER-ALREADY-REGISTERED if user already registered
+;;   - ERR-USERNAME-TAKEN if username is already taken by another user
 ;; ============================================================================
 (define-public (register (username (string-ascii 50)))
     (let ((user tx-sender))
         (match (map-get? user-points user)
             existing ERR-USER-ALREADY-REGISTERED ;; User already registered
             (begin
-                (map-set user-points user STARTING_POINTS)
-                (map-set earned-points user u0) ;; Starting points don't count as earned
-                (map-set user-names user username)
-                ;; Emit event
-                (print {
-                    event: "user-registered",
-                    user: user,
-                    username: username,
-                    points: STARTING_POINTS
-                })
-                ;; Log transaction
-                (let ((log-id (var-get next-log-id)))
-                    (map-set transaction-logs log-id {
-                        action: "register",
-                        user: user,
-                        event-id: none,
-                        listing-id: none,
-                        amount: (some STARTING_POINTS),
-                        metadata: username
-                    })
-                    (var-set next-log-id (+ log-id u1))
+                ;; Track username for uniqueness
+                (match (map-get? usernames username)
+                    existing-user ERR-USERNAME-TAKEN ;; Username already taken
+                    (begin
+                        (map-set user-points user STARTING_POINTS)
+                        (map-set earned-points user u0) ;; Starting points don't count as earned
+                        (map-set user-names user username)
+                        (map-set usernames username user) ;; Store username -> user mapping for uniqueness
+                        ;; Emit event
+                        (print {
+                            event: "user-registered",
+                            user: user,
+                            username: username,
+                            points: STARTING_POINTS
+                        })
+                        ;; Log transaction
+                        (let ((log-id (var-get next-log-id)))
+                            (map-set transaction-logs log-id {
+                                action: "register",
+                                user: user,
+                                event-id: none,
+                                listing-id: none,
+                                amount: (some STARTING_POINTS),
+                                metadata: username
+                            })
+                            (var-set next-log-id (+ log-id u1))
+                        )
+                        (ok true)
+                    )
                 )
-                (ok true)
             )
         )
     )
@@ -970,6 +982,8 @@
                                 (asserts! (>= current-points points) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
                                 ;; Transfer STX listing fee to contract
                                 (try! (stx-transfer? LISTING_FEE seller (as-contract tx-sender)))
+                                ;; Add listing fee to protocol treasury
+                                (var-set protocol-treasury (+ (var-get protocol-treasury) LISTING_FEE))
                                 ;; Lock seller's points by deducting them
                                 (map-set user-points seller (- current-points points))
                                 ;; Create listing
@@ -1195,7 +1209,66 @@
 )
 
 ;; ============================================================================
-;; 10. create-guild (guild-id, name)
+;; 10. withdraw-protocol-fees (amount)
+;; ============================================================================
+;; Purpose: Withdraw protocol fees from the treasury (admin only).
+;;
+;; Details:
+;;   - Verifies caller is admin (error u2)
+;;   - Validates amount > 0 (error u4)
+;;   - Checks treasury has sufficient balance (error u25)
+;;   - Transfers STX from contract to admin
+;;   - Updates protocol-treasury balance
+;;   - Returns (ok true) on success
+;;
+;; Use case: Admin withdraws accumulated protocol fees for dev funding, rewards, or governance.
+;;
+;; Parameters:
+;;   - amount: uint - Amount in micro-STX to withdraw
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;;   - ERR-INVALID-AMOUNT if amount <= 0
+;;   - ERR-INSUFFICIENT-TREASURY if treasury balance is insufficient
+;; ============================================================================
+(define-public (withdraw-protocol-fees (amount uint))
+    (let ((caller tx-sender)
+          (admin-principal (var-get admin)))
+        (asserts! (is-eq caller admin-principal) ERR-NOT-ADMIN) ;; Only admin can withdraw
+        (asserts! (> amount u0) ERR-INVALID-AMOUNT) ;; Amount must be greater than 0
+        (let ((treasury-balance (var-get protocol-treasury)))
+            (asserts! (>= treasury-balance amount) ERR-INSUFFICIENT-TREASURY) ;; Insufficient treasury balance
+            ;; Update protocol treasury balance
+            (var-set protocol-treasury (- treasury-balance amount))
+            ;; Transfer STX from contract to admin
+            (try! (stx-transfer? amount (as-contract tx-sender) admin-principal))
+            ;; Emit event
+            (print {
+                event: "protocol-fees-withdrawn",
+                admin: admin-principal,
+                amount: amount,
+                remaining-balance: (- treasury-balance amount)
+            })
+            ;; Log transaction
+            (let ((log-id (var-get next-log-id)))
+                (map-set transaction-logs log-id {
+                    action: "withdraw-protocol-fees",
+                    user: admin-principal,
+                    event-id: none,
+                    listing-id: none,
+                    amount: (some amount),
+                    metadata: "protocol-fees-withdrawn"
+                })
+                (var-set next-log-id (+ log-id u1))
+            )
+            (ok true)
+        )
+    )
+)
+
+;; ============================================================================
+;; 11. create-guild (guild-id, name)
 ;; ============================================================================
 ;; Purpose: Create a new guild for collaborative predictions.
 ;;
@@ -1242,7 +1315,7 @@
 )
 
 ;; ============================================================================
-;; 11. join-guild (guild-id)
+;; 12. join-guild (guild-id)
 ;; ============================================================================
 ;; Purpose: Join an existing guild.
 ;;
@@ -1294,7 +1367,7 @@
 )
 
 ;; ============================================================================
-;; 12. leave-guild (guild-id)
+;; 13. leave-guild (guild-id)
 ;; ============================================================================
 ;; Purpose: Leave a guild (can only withdraw own deposits first).
 ;;
@@ -1368,7 +1441,7 @@
 )
 
 ;; ============================================================================
-;; 13. deposit-to-guild (guild-id, amount)
+;; 14. deposit-to-guild (guild-id, amount)
 ;; ============================================================================
 ;; Purpose: Deposit points to guild pool for collaborative predictions.
 ;;
@@ -1449,7 +1522,7 @@
 )
 
 ;; ============================================================================
-;; 14. withdraw-from-guild (guild-id, amount)
+;; 15. withdraw-from-guild (guild-id, amount)
 ;; ============================================================================
 ;; Purpose: Withdraw own deposits from guild pool.
 ;;
@@ -1524,7 +1597,7 @@
 )
 
 ;; ============================================================================
-;; 15. guild-stake-yes (guild-id, event-id, amount)
+;; 16. guild-stake-yes (guild-id, event-id, amount)
 ;; ============================================================================
 ;; Purpose: Guild stakes points on YES outcome of an event.
 ;;
@@ -1634,7 +1707,7 @@
 )
 
 ;; ============================================================================
-;; 16. guild-stake-no (guild-id, event-id, amount)
+;; 17. guild-stake-no (guild-id, event-id, amount)
 ;; ============================================================================
 ;; Purpose: Guild stakes points on NO outcome of an event.
 ;;
@@ -1737,7 +1810,7 @@
 )
 
 ;; ============================================================================
-;; 17. guild-claim (guild-id, event-id)
+;; 18. guild-claim (guild-id, event-id)
 ;; ============================================================================
 ;; Purpose: Claim rewards for guild from a resolved event if guild won.
 ;;
@@ -2378,31 +2451,3 @@
     )
 )
 
-;; ============================================================================
-;; ERROR CODES REFERENCE
-;; ============================================================================
-;; u1:  User already registered
-;; u2:  Not admin
-;; u3:  Event ID already exists
-;; u4:  Amount/price must be > 0
-;; u5:  Event not open
-;; u6:  Insufficient points
-;; u7:  User not registered
-;; u8:  Event not found
-;; u9:  Event must be open to resolve
-;; u10: Event must be resolved
-;; u11: No winners (pool empty)
-;; u12: No stake found
-;; u13: Winner not set
-;; u14: Must have earned >= 10,000 points
-;; u15: Listing not active
-;; u16: Listing not found
-;; u17: Only seller can cancel
-;; u18: Not enough points available in listing
-;; u19: Guild ID already exists
-;; u20: Guild not found
-;; u21: Already a guild member
-;; u22: Not a guild member
-;; u23: Has deposits (must withdraw first)
-;; u24: Insufficient deposits
-;; ============================================================================
