@@ -42,6 +42,7 @@
 (define-constant ERR-HAS-DEPOSITS (err u23))
 (define-constant ERR-INSUFFICIENT-DEPOSITS (err u24))
 (define-constant ERR-INSUFFICIENT-TREASURY (err u25))
+(define-constant ERR-USERNAME-TAKEN (err u26))
 
 ;; data vars
 (define-data-var admin principal tx-sender)
@@ -58,6 +59,7 @@
 (define-map user-points principal uint)
 (define-map earned-points principal uint) ;; Points earned from predictions (used for selling threshold)
 (define-map user-names principal (string-ascii 50)) ;; User names
+(define-map usernames (string-ascii 50) principal) ;; Track username for uniqueness (username -> user)
 
 ;; Prediction Event Registry
 (define-map events uint {
@@ -135,48 +137,57 @@
 ;; Details:
 ;;   - Takes a username (up to 50 ASCII characters)
 ;;   - Checks if the user is already registered (error u1 if yes)
+;;   - Checks if the username is already taken (error u26 if yes)
 ;;   - Grants 1,000 starting points (non-sellable)
 ;;   - Sets earned-points to 0 (starting points don't count toward selling threshold)
-;;   - Stores the username
+;;   - Stores the username and tracks it for uniqueness
 ;;   - Returns (ok true) on success
 ;;
 ;; Use case: First-time user onboarding.
 ;;
 ;; Parameters:
-;;   - username: (string-ascii 50) - User's chosen username
+;;   - username: (string-ascii 50) - User's chosen username (must be unique)
 ;;
 ;; Returns:
 ;;   - (ok true) on success
 ;;   - ERR-USER-ALREADY-REGISTERED if user already registered
+;;   - ERR-USERNAME-TAKEN if username is already taken by another user
 ;; ============================================================================
 (define-public (register (username (string-ascii 50)))
     (let ((user tx-sender))
         (match (map-get? user-points user)
             existing ERR-USER-ALREADY-REGISTERED ;; User already registered
             (begin
-                (map-set user-points user STARTING_POINTS)
-                (map-set earned-points user u0) ;; Starting points don't count as earned
-                (map-set user-names user username)
-                ;; Emit event
-                (print {
-                    event: "user-registered",
-                    user: user,
-                    username: username,
-                    points: STARTING_POINTS
-                })
-                ;; Log transaction
-                (let ((log-id (var-get next-log-id)))
-                    (map-set transaction-logs log-id {
-                        action: "register",
-                        user: user,
-                        event-id: none,
-                        listing-id: none,
-                        amount: (some STARTING_POINTS),
-                        metadata: username
-                    })
-                    (var-set next-log-id (+ log-id u1))
+                ;; Track username for uniqueness
+                (match (map-get? usernames username)
+                    existing-user ERR-USERNAME-TAKEN ;; Username already taken
+                    (begin
+                        (map-set user-points user STARTING_POINTS)
+                        (map-set earned-points user u0) ;; Starting points don't count as earned
+                        (map-set user-names user username)
+                        (map-set usernames username user) ;; Store username -> user mapping for uniqueness
+                        ;; Emit event
+                        (print {
+                            event: "user-registered",
+                            user: user,
+                            username: username,
+                            points: STARTING_POINTS
+                        })
+                        ;; Log transaction
+                        (let ((log-id (var-get next-log-id)))
+                            (map-set transaction-logs log-id {
+                                action: "register",
+                                user: user,
+                                event-id: none,
+                                listing-id: none,
+                                amount: (some STARTING_POINTS),
+                                metadata: username
+                            })
+                            (var-set next-log-id (+ log-id u1))
+                        )
+                        (ok true)
+                    )
                 )
-                (ok true)
             )
         )
     )

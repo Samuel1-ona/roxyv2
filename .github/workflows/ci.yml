@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  sanity-checks:
+    runs-on: ubuntu-latest
+    container: ghcr.io/stx-labs/clarinet:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check Clarity contracts check
+        run: clarinet check --use-on-disk-deployment-plan
+      
+      - name: Check Clarity contracts format
+        run: clarinet fmt --check
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Run tests with coverage and costs
+        run: npm run test:report
