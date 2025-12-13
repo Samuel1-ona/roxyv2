@@ -75,6 +75,11 @@ function accumulateEarnedPoints(user: string, opponent: string, startEventId: nu
 }
 
 describe("Roxy Contract Tests", () => {
+  it("ensures the contract is deployed", () => {
+    const contractSource = simnet.getContractSource("roxy");
+    expect(contractSource).toBeDefined();
+  });
+
   describe("register", () => {
     it("should register a new user successfully", () => {
       const { result } = simnet.callPublicFn(

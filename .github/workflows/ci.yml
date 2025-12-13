@@ -13,8 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Format Clarity contracts
+        run: clarinet format --in-place
+      
       - name: Check Clarity contracts check
         run: clarinet check --use-on-disk-deployment-plan
+
+        
       
 
   tests:
