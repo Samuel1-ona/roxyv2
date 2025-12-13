@@ -743,7 +743,8 @@
                                                                                             win-rate: u0
                                                                                         })
                                                                                     )
-                                                                                    ERR-NO-STAKE-FOUND ;; Lost (stake cleared)
+                                                                                    ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                    (ok u0)
                                                                                 )
                                                                                 ERR-NO-STAKE-FOUND ;; No stake found
                                                                             )
@@ -756,8 +757,9 @@
                                                     ERR-NO-STAKE-FOUND ;; No stake found
                                                 )
                                                 ;; User staked NO
-                                                (match (map-get? no-stakes (tuple (event-id event-id) (user user)))
-                                                    stake (begin
+                                                (let ((no-stake-opt (map-get? no-stakes (tuple (event-id event-id) (user user)))))
+                                                    (if (is-some no-stake-opt)
+                                                        (let ((stake (unwrap! no-stake-opt ERR-NO-STAKE-FOUND)))
                                                             (if (> stake u0)
                                                                 (let ((reward (/ (* stake total-pool) winning-pool)))
                                                                     ;; Add reward to user points
@@ -880,7 +882,7 @@
                                                                     )
                                                                 )
                                                                 (begin
-                                                                    ;; Check if user had YES stake (they lost)
+                                                                    ;; User had NO stake but it's 0, check if user had YES stake (they lost)
                                                                     (match (map-get? yes-stakes (tuple (event-id event-id) (user user)))
                                                                         yes-stake (begin
                                                                             (if (> yes-stake u0)
@@ -912,7 +914,8 @@
                                                                                             win-rate: u0
                                                                                         })
                                                                                     )
-                                                                                    ERR-NO-STAKE-FOUND ;; Lost (stake cleared)
+                                                                                    ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                    (ok u0)
                                                                                 )
                                                                                 ERR-NO-STAKE-FOUND ;; No stake found
                                                                             )
@@ -922,7 +925,51 @@
                                                                 )
                                                             )
                                                         )
-                                                    ERR-NO-STAKE-FOUND ;; No stake found
+                                                        (begin
+                                                            ;; No NO stake found, check if user had YES stake (they lost)
+                                                            (let ((yes-stake-opt (map-get? yes-stakes (tuple (event-id event-id) (user user)))))
+                                                                (if (is-some yes-stake-opt)
+                                                                    (let ((yes-stake (unwrap! yes-stake-opt ERR-NO-STAKE-FOUND)))
+                                                                        (if (> yes-stake u0)
+                                                                            (begin
+                                                                                ;; User had YES stake but NO won - clear stake and track loss
+                                                                                ;; Update total YES stakes (subtract before clearing)
+                                                                                (var-set total-yes-stakes (- (var-get total-yes-stakes) yes-stake))
+                                                                                (map-set yes-stakes (tuple (event-id event-id) (user user)) u0)
+                                                                                ;; Update leaderboard stats (LOSS)
+                                                                                (match (map-get? user-stats user)
+                                                                                    stats (begin
+                                                                                        (let ((new-losses (+ (get losses stats) u1))
+                                                                                              (total-games (+ (get wins stats) new-losses))
+                                                                                              (new-win-rate (if (is-eq total-games u0) u0 (/ (* (get wins stats) u10000) total-games))))
+                                                                                            (map-set user-stats user {
+                                                                                                total-predictions: (get total-predictions stats),
+                                                                                                wins: (get wins stats),
+                                                                                                losses: new-losses,
+                                                                                                total-points-earned: (get total-points-earned stats),
+                                                                                                win-rate: new-win-rate
+                                                                                            })
+                                                                                        )
+                                                                                    )
+                                                                                    (map-set user-stats user {
+                                                                                        total-predictions: u1,
+                                                                                        wins: u0,
+                                                                                        losses: u1,
+                                                                                        total-points-earned: u0,
+                                                                                        win-rate: u0
+                                                                                    })
+                                                                                )
+                                                                                ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                (ok u0)
+                                                                            )
+                                                                            ERR-NO-STAKE-FOUND ;; No stake found
+                                                                        )
+                                                                    )
+                                                                    ERR-NO-STAKE-FOUND ;; No stake found
+                                                                )
+                                                            )
+                                                        )
+                                                    )
                                                 )
                                             )
                                         )
@@ -1909,10 +1956,94 @@
                                                                             })
                                                                             (ok reward)
                                                                         )
-                                                                        ERR-NO-STAKE-FOUND ;; No stake found
+                                                                        (begin
+                                                                            ;; Guild had YES stake but it's 0, check if guild had NO stake (they lost)
+                                                                            (match (map-get? guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)))
+                                                                                no-stake (begin
+                                                                                    (if (> no-stake u0)
+                                                                                        (begin
+                                                                                            ;; Guild had NO stake but YES won - clear stake and track loss
+                                                                                            ;; Update total guild NO stakes (subtract before clearing)
+                                                                                            (var-set total-guild-no-stakes (- (var-get total-guild-no-stakes) no-stake))
+                                                                                            (map-set guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)) u0)
+                                                                                            ;; Update guild leaderboard stats (LOSS)
+                                                                                            (match (map-get? guild-stats guild-id)
+                                                                                                stats (begin
+                                                                                                    (let ((new-losses (+ (get losses stats) u1))
+                                                                                                          (total-games (+ (get wins stats) new-losses))
+                                                                                                          (new-win-rate (if (is-eq total-games u0) u0 (/ (* (get wins stats) u10000) total-games))))
+                                                                                                        (map-set guild-stats guild-id {
+                                                                                                            total-predictions: (get total-predictions stats),
+                                                                                                            wins: (get wins stats),
+                                                                                                            losses: new-losses,
+                                                                                                            total-points-earned: (get total-points-earned stats),
+                                                                                                            win-rate: new-win-rate
+                                                                                                        })
+                                                                                                    )
+                                                                                                )
+                                                                                                (map-set guild-stats guild-id {
+                                                                                                    total-predictions: u1,
+                                                                                                    wins: u0,
+                                                                                                    losses: u1,
+                                                                                                    total-points-earned: u0,
+                                                                                                    win-rate: u0
+                                                                                                })
+                                                                                            )
+                                                                                            ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                            (ok u0)
+                                                                                        )
+                                                                                        ERR-NO-STAKE-FOUND ;; No stake found
+                                                                                    )
+                                                                                )
+                                                                                ERR-NO-STAKE-FOUND ;; No stake found
+                                                                            )
+                                                                        )
                                                                     )
                                                                 )
-                                                                ERR-NO-STAKE-FOUND ;; No stake found
+                                                                (begin
+                                                                    ;; No YES stake found, check if guild had NO stake (they lost)
+                                                                    (let ((no-stake-opt (map-get? guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)))))
+                                                                        (if (is-some no-stake-opt)
+                                                                            (let ((no-stake (unwrap! no-stake-opt ERR-NO-STAKE-FOUND)))
+                                                                                (if (> no-stake u0)
+                                                                                    (begin
+                                                                                        ;; Guild had NO stake but YES won - clear stake and track loss
+                                                                                        ;; Update total guild NO stakes (subtract before clearing)
+                                                                                        (var-set total-guild-no-stakes (- (var-get total-guild-no-stakes) no-stake))
+                                                                                        (map-set guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)) u0)
+                                                                                        ;; Update guild leaderboard stats (LOSS)
+                                                                                        (match (map-get? guild-stats guild-id)
+                                                                                            stats (begin
+                                                                                                (let ((new-losses (+ (get losses stats) u1))
+                                                                                                      (total-games (+ (get wins stats) new-losses))
+                                                                                                      (new-win-rate (if (is-eq total-games u0) u0 (/ (* (get wins stats) u10000) total-games))))
+                                                                                                    (map-set guild-stats guild-id {
+                                                                                                        total-predictions: (get total-predictions stats),
+                                                                                                        wins: (get wins stats),
+                                                                                                        losses: new-losses,
+                                                                                                        total-points-earned: (get total-points-earned stats),
+                                                                                                        win-rate: new-win-rate
+                                                                                                    })
+                                                                                                )
+                                                                                            )
+                                                                                            (map-set guild-stats guild-id {
+                                                                                                total-predictions: u1,
+                                                                                                wins: u0,
+                                                                                                losses: u1,
+                                                                                                total-points-earned: u0,
+                                                                                                win-rate: u0
+                                                                                            })
+                                                                                        )
+                                                                                        ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                        (ok u0)
+                                                                                    )
+                                                                                    ERR-NO-STAKE-FOUND ;; No stake found
+                                                                                )
+                                                                            )
+                                                                            ERR-NO-STAKE-FOUND ;; No stake found
+                                                                        )
+                                                                    )
+                                                                )
                                                             )
                                                             ;; Guild staked NO
                                                             (match (map-get? guild-no-stakes (tuple (guild-id guild-id) (event-id event-id)))
@@ -1963,10 +2094,94 @@
                                                                             })
                                                                             (ok reward)
                                                                         )
-                                                                        ERR-NO-STAKE-FOUND ;; No stake found
+                                                                        (begin
+                                                                            ;; Guild had NO stake but it's 0, check if guild had YES stake (they lost)
+                                                                            (match (map-get? guild-yes-stakes (tuple (guild-id guild-id) (event-id event-id)))
+                                                                                yes-stake (begin
+                                                                                    (if (> yes-stake u0)
+                                                                                        (begin
+                                                                                            ;; Guild had YES stake but NO won - clear stake and track loss
+                                                                                            ;; Update total guild YES stakes (subtract before clearing)
+                                                                                            (var-set total-guild-yes-stakes (- (var-get total-guild-yes-stakes) yes-stake))
+                                                                                            (map-set guild-yes-stakes (tuple (guild-id guild-id) (event-id event-id)) u0)
+                                                                                            ;; Update guild leaderboard stats (LOSS)
+                                                                                            (match (map-get? guild-stats guild-id)
+                                                                                                stats (begin
+                                                                                                    (let ((new-losses (+ (get losses stats) u1))
+                                                                                                          (total-games (+ (get wins stats) new-losses))
+                                                                                                          (new-win-rate (if (is-eq total-games u0) u0 (/ (* (get wins stats) u10000) total-games))))
+                                                                                                        (map-set guild-stats guild-id {
+                                                                                                            total-predictions: (get total-predictions stats),
+                                                                                                            wins: (get wins stats),
+                                                                                                            losses: new-losses,
+                                                                                                            total-points-earned: (get total-points-earned stats),
+                                                                                                            win-rate: new-win-rate
+                                                                                                        })
+                                                                                                    )
+                                                                                                )
+                                                                                                (map-set guild-stats guild-id {
+                                                                                                    total-predictions: u1,
+                                                                                                    wins: u0,
+                                                                                                    losses: u1,
+                                                                                                    total-points-earned: u0,
+                                                                                                    win-rate: u0
+                                                                                                })
+                                                                                            )
+                                                                                            ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                            (ok u0)
+                                                                                        )
+                                                                                        ERR-NO-STAKE-FOUND ;; No stake found
+                                                                                    )
+                                                                                )
+                                                                                ERR-NO-STAKE-FOUND ;; No stake found
+                                                                            )
+                                                                        )
                                                                     )
                                                                 )
-                                                                ERR-NO-STAKE-FOUND ;; No stake found
+                                                                (begin
+                                                                    ;; No NO stake found, check if guild had YES stake (they lost)
+                                                                    (let ((yes-stake-opt (map-get? guild-yes-stakes (tuple (guild-id guild-id) (event-id event-id)))))
+                                                                        (if (is-some yes-stake-opt)
+                                                                            (let ((yes-stake (unwrap! yes-stake-opt ERR-NO-STAKE-FOUND)))
+                                                                                (if (> yes-stake u0)
+                                                                                    (begin
+                                                                                        ;; Guild had YES stake but NO won - clear stake and track loss
+                                                                                        ;; Update total guild YES stakes (subtract before clearing)
+                                                                                        (var-set total-guild-yes-stakes (- (var-get total-guild-yes-stakes) yes-stake))
+                                                                                        (map-set guild-yes-stakes (tuple (guild-id guild-id) (event-id event-id)) u0)
+                                                                                        ;; Update guild leaderboard stats (LOSS)
+                                                                                        (match (map-get? guild-stats guild-id)
+                                                                                            stats (begin
+                                                                                                (let ((new-losses (+ (get losses stats) u1))
+                                                                                                      (total-games (+ (get wins stats) new-losses))
+                                                                                                      (new-win-rate (if (is-eq total-games u0) u0 (/ (* (get wins stats) u10000) total-games))))
+                                                                                                    (map-set guild-stats guild-id {
+                                                                                                        total-predictions: (get total-predictions stats),
+                                                                                                        wins: (get wins stats),
+                                                                                                        losses: new-losses,
+                                                                                                        total-points-earned: (get total-points-earned stats),
+                                                                                                        win-rate: new-win-rate
+                                                                                                    })
+                                                                                                )
+                                                                                            )
+                                                                                            (map-set guild-stats guild-id {
+                                                                                                total-predictions: u1,
+                                                                                                wins: u0,
+                                                                                                losses: u1,
+                                                                                                total-points-earned: u0,
+                                                                                                win-rate: u0
+                                                                                            })
+                                                                                        )
+                                                                                        ;; Return success with 0 reward to indicate loss tracked (state changes persist)
+                                                                                        (ok u0)
+                                                                                    )
+                                                                                    ERR-NO-STAKE-FOUND ;; No stake found
+                                                                                )
+                                                                            )
+                                                                            ERR-NO-STAKE-FOUND ;; No stake found
+                                                                        )
+                                                                    )
+                                                                )
                                                             )
                                                         )
                                                     )
