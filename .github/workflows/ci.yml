@@ -19,6 +19,26 @@ jobs:
       - name: Check Clarity contracts check
         run: clarinet check --use-on-disk-deployment-plan
 
+  fuzz-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Clarinet
+        run: curl -L https://github.com/hirosystems/clarinet/releases/latest/download/clarinet-linux-x64.tar.gz | tar -xz && sudo mv clarinet /usr/local/bin/
+      
+      - name: Run fuzz tests
+        run: npx rv . roxy test 
+
         
       
 
