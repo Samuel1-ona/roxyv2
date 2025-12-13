@@ -17,7 +17,6 @@ jobs:
         run: clarinet check --use-on-disk-deployment-plan
       
 
-
   tests:
     runs-on: ubuntu-latest
     steps:
