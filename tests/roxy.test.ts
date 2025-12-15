@@ -90,7 +90,23 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify user points
+      // Verify user points via map
+      const userPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(address1));
+      expect(userPoints).toBeSome(Cl.uint(1000));
+
+      // Verify earned points via map
+      const earnedPoints = simnet.getMapEntry(contractName, "earned-points", Cl.principal(address1));
+      expect(earnedPoints).toBeSome(Cl.uint(0));
+
+      // Verify user name via map
+      const userName = simnet.getMapEntry(contractName, "user-names", Cl.principal(address1));
+      expect(userName).toBeSome(Cl.stringAscii("alice"));
+
+      // Verify username uniqueness map
+      const usernameMapping = simnet.getMapEntry(contractName, "usernames", Cl.stringAscii("alice"));
+      expect(usernameMapping).toBeSome(Cl.principal(address1));
+
+      // Verify user points via read-only function
       const { result: pointsResult } = simnet.callReadOnlyFn(
         contractName,
         "get-user-points",
@@ -99,7 +115,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(pointsResult).toBeOk(Cl.some(Cl.uint(1000)));
 
-      // Verify earned points
+      // Verify earned points via read-only function
       const { result: earnedResult } = simnet.callReadOnlyFn(
         contractName,
         "get-earned-points",
@@ -108,7 +124,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(earnedResult).toBeOk(Cl.some(Cl.uint(0)));
 
-      // Verify username
+      // Verify username via read-only function
       const { result: usernameResult } = simnet.callReadOnlyFn(
         contractName,
         "get-username",
@@ -155,7 +171,20 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify event
+      // Verify event via map
+      const event = simnet.getMapEntry(contractName, "events", Cl.uint(1));
+      expect(event).toBeSome(
+        Cl.tuple({
+          "yes-pool": Cl.uint(0),
+          "no-pool": Cl.uint(0),
+          status: Cl.stringAscii("open"),
+          winner: Cl.none(),
+          creator: Cl.principal(deployer),
+          metadata: Cl.stringAscii("Will Bitcoin reach $100k?"),
+        })
+      );
+
+      // Verify event via read-only function
       const { result: eventResult } = simnet.callReadOnlyFn(
         contractName,
         "get-event",
@@ -223,7 +252,36 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify stake
+      // Verify stake via map
+      const stakeKey = Cl.tuple({
+        "event-id": Cl.uint(1),
+        user: Cl.principal(address1),
+      });
+      const stake = simnet.getMapEntry(contractName, "yes-stakes", stakeKey);
+      expect(stake).toBeSome(Cl.uint(100));
+
+      // Verify user points reduced via map
+      const userPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(address1));
+      expect(userPoints).toBeSome(Cl.uint(900)); // 1000 - 100
+
+      // Verify event pool updated via map
+      const event = simnet.getMapEntry(contractName, "events", Cl.uint(1));
+      expect(event).toBeSome(
+        Cl.tuple({
+          "yes-pool": Cl.uint(100),
+          "no-pool": Cl.uint(0),
+          status: Cl.stringAscii("open"),
+          winner: Cl.none(),
+          creator: Cl.principal(deployer),
+          metadata: Cl.stringAscii("Test event"),
+        })
+      );
+
+      // Verify total YES stakes via data var
+      const totalYesStakes = simnet.getDataVar(contractName, "total-yes-stakes");
+      expect(totalYesStakes).toBeUint(100);
+
+      // Verify stake via read-only function
       const { result: stakeResult } = simnet.callReadOnlyFn(
         contractName,
         "get-yes-stake",
@@ -232,7 +290,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(stakeResult).toBeSome(Cl.uint(100));
 
-      // Verify user points reduced
+      // Verify user points reduced via read-only function
       const { result: pointsResult } = simnet.callReadOnlyFn(
         contractName,
         "get-user-points",
@@ -241,7 +299,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(pointsResult).toBeOk(Cl.some(Cl.uint(900))); // 1000 - 100
 
-      // Verify event pool updated
+      // Verify event pool updated via read-only function
       const { result: eventResult } = simnet.callReadOnlyFn(
         contractName,
         "get-event",
@@ -259,7 +317,7 @@ describe("Roxy Contract Tests", () => {
         })
       );
 
-      // Verify total YES stakes
+      // Verify total YES stakes via read-only function
       const { result: totalYesResult } = simnet.callReadOnlyFn(
         contractName,
         "get-total-yes-stakes",
@@ -361,7 +419,19 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify stake
+      // Verify stake via map
+      const stakeKey = Cl.tuple({
+        "event-id": Cl.uint(1),
+        user: Cl.principal(address1),
+      });
+      const stake = simnet.getMapEntry(contractName, "no-stakes", stakeKey);
+      expect(stake).toBeSome(Cl.uint(100));
+
+      // Verify total NO stakes via data var
+      const totalNoStakes = simnet.getDataVar(contractName, "total-no-stakes");
+      expect(totalNoStakes).toBeUint(100);
+
+      // Verify stake via read-only function
       const { result: stakeResult } = simnet.callReadOnlyFn(
         contractName,
         "get-no-stake",
@@ -370,7 +440,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(stakeResult).toBeSome(Cl.uint(100));
 
-      // Verify total NO stakes
+      // Verify total NO stakes via read-only function
       const { result: totalNoResult } = simnet.callReadOnlyFn(
         contractName,
         "get-total-no-stakes",
@@ -412,7 +482,20 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify event resolved
+      // Verify event resolved via map
+      const event = simnet.getMapEntry(contractName, "events", Cl.uint(1));
+      expect(event).toBeSome(
+        Cl.tuple({
+          "yes-pool": Cl.uint(0),
+          "no-pool": Cl.uint(0),
+          status: Cl.stringAscii("resolved"),
+          winner: Cl.some(Cl.bool(true)),
+          creator: Cl.principal(deployer),
+          metadata: Cl.stringAscii("Test event"),
+        })
+      );
+
+      // Verify event resolved via read-only function
       const { result: eventResult } = simnet.callReadOnlyFn(
         contractName,
         "get-event",
@@ -506,7 +589,35 @@ describe("Roxy Contract Tests", () => {
         expect(result.value).toStrictEqual(Cl.uint(300));
       }
 
-      // Verify user points increased
+      // Verify user points increased via map
+      const userPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(address1));
+      expect(userPoints).toBeSome(Cl.uint(1200)); // 1000 - 100 + 300
+
+      // Verify earned points increased via map
+      const earnedPoints = simnet.getMapEntry(contractName, "earned-points", Cl.principal(address1));
+      expect(earnedPoints).toBeSome(Cl.uint(300));
+
+      // Verify stake cleared via map
+      const stakeKey = Cl.tuple({
+        "event-id": Cl.uint(1),
+        user: Cl.principal(address1),
+      });
+      const stake = simnet.getMapEntry(contractName, "yes-stakes", stakeKey);
+      expect(stake).toBeSome(Cl.uint(0));
+
+      // Verify user stats updated via map
+      const userStats = simnet.getMapEntry(contractName, "user-stats", Cl.principal(address1));
+      expect(userStats).toBeSome(
+        Cl.tuple({
+          "total-predictions": Cl.uint(1),
+          wins: Cl.uint(1),
+          losses: Cl.uint(0),
+          "total-points-earned": Cl.uint(300),
+          "win-rate": Cl.uint(10000), // 100%
+        })
+      );
+
+      // Verify user points increased via read-only function
       const { result: pointsResult } = simnet.callReadOnlyFn(
         contractName,
         "get-user-points",
@@ -515,7 +626,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(pointsResult).toBeOk(Cl.some(Cl.uint(1200))); // 1000 - 100 + 300
 
-      // Verify earned points increased
+      // Verify earned points increased via read-only function
       const { result: earnedResult } = simnet.callReadOnlyFn(
         contractName,
         "get-earned-points",
@@ -524,7 +635,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(earnedResult).toBeOk(Cl.some(Cl.uint(300)));
 
-      // Verify stake cleared
+      // Verify stake cleared via read-only function
       const { result: stakeResult } = simnet.callReadOnlyFn(
         contractName,
         "get-yes-stake",
@@ -533,7 +644,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(stakeResult).toBeSome(Cl.uint(0));
 
-      // Verify user stats updated
+      // Verify user stats updated via read-only function
       const { result: statsResult } = simnet.callReadOnlyFn(
         contractName,
         "get-user-stats",
@@ -684,7 +795,22 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.uint(1));
 
-      // Verify listing
+      // Verify listing via map
+      const listing = simnet.getMapEntry(contractName, "listings", Cl.uint(1));
+      expect(listing).toBeSome(
+        Cl.tuple({
+          seller: Cl.principal(address1),
+          points: Cl.uint(500),
+          "price-stx": Cl.uint(1000000),
+          active: Cl.bool(true),
+        })
+      );
+
+      // Verify next-listing-id data var
+      const nextListingId = simnet.getDataVar(contractName, "next-listing-id");
+      expect(nextListingId).toBeUint(2); // Should be incremented to 2
+
+      // Verify listing via read-only function
       const { result: listingResult } = simnet.callReadOnlyFn(
         contractName,
         "get-listing",
@@ -780,7 +906,29 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify listing deactivated
+      // Verify listing deactivated via map
+      const listing = simnet.getMapEntry(contractName, "listings", Cl.uint(1));
+      expect(listing).toBeSome(
+        Cl.tuple({
+          seller: Cl.principal(address1),
+          points: Cl.uint(0),
+          "price-stx": Cl.uint(0),
+          active: Cl.bool(false),
+        })
+      );
+
+      // Verify Bob got points via map (starts with 1000 from registration, gets 500 from purchase = 1500)
+      const bobPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(address2));
+      expect(bobPoints).toBeSome(Cl.uint(1500));
+
+      // Verify protocol treasury increased via data var (should have listing fee + protocol fee)
+      const protocolTreasury = simnet.getDataVar(contractName, "protocol-treasury");
+      expect(protocolTreasury.type).toBe("uint");
+      if (protocolTreasury.type === "uint") {
+        expect(protocolTreasury.value).toBeGreaterThan(0);
+      }
+
+      // Verify listing deactivated via read-only function
       const { result: listingResult } = simnet.callReadOnlyFn(
         contractName,
         "get-listing",
@@ -796,7 +944,7 @@ describe("Roxy Contract Tests", () => {
         })
       );
 
-      // Verify Bob got points (starts with 1000 from registration, gets 500 from purchase = 1500)
+      // Verify Bob got points via read-only function
       const { result: bobPointsResult } = simnet.callReadOnlyFn(
         contractName,
         "get-user-points",
@@ -1112,7 +1260,33 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify guild
+      // Verify guild via map
+      const guild = simnet.getMapEntry(contractName, "guilds", Cl.uint(1));
+      expect(guild).toBeSome(
+        Cl.tuple({
+          creator: Cl.principal(address1),
+          name: Cl.stringAscii("Test Guild"),
+          "total-points": Cl.uint(0),
+          "member-count": Cl.uint(1),
+        })
+      );
+
+      // Verify creator is member via map
+      const memberKey = Cl.tuple({
+        "guild-id": Cl.uint(1),
+        user: Cl.principal(address1),
+      });
+      const isMember = simnet.getMapEntry(contractName, "guild-members", memberKey);
+      expect(isMember).toBeSome(Cl.bool(true));
+
+      // Verify next-guild-id data var
+      const nextGuildId = simnet.getDataVar(contractName, "next-guild-id");
+      expect(nextGuildId.type).toBe("uint");
+      if (nextGuildId.type === "uint") {
+        expect(nextGuildId.value).toBeGreaterThanOrEqual(1);
+      }
+
+      // Verify guild via read-only function
       const { result: guildResult } = simnet.callReadOnlyFn(
         contractName,
         "get-guild",
@@ -1128,7 +1302,7 @@ describe("Roxy Contract Tests", () => {
         })
       );
 
-      // Verify creator is member
+      // Verify creator is member via read-only function
       const { result: memberResult } = simnet.callReadOnlyFn(
         contractName,
         "is-guild-member",
@@ -1312,7 +1486,26 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify deposit
+      // Verify deposit via map
+      const depositKey = Cl.tuple({
+        "guild-id": Cl.uint(1),
+        user: Cl.principal(address2),
+      });
+      const deposit = simnet.getMapEntry(contractName, "guild-deposits", depositKey);
+      expect(deposit).toBeSome(Cl.uint(100));
+
+      // Verify guild points increased via map
+      const guild = simnet.getMapEntry(contractName, "guilds", Cl.uint(1));
+      expect(guild).toBeSome(
+        Cl.tuple({
+          creator: Cl.principal(address1),
+          name: Cl.stringAscii("Test Guild"),
+          "total-points": Cl.uint(100),
+          "member-count": Cl.uint(2),
+        })
+      );
+
+      // Verify deposit via read-only function
       const { result: depositResult } = simnet.callReadOnlyFn(
         contractName,
         "get-guild-deposit",
@@ -1321,7 +1514,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(depositResult).toBeSome(Cl.uint(100));
 
-      // Verify guild points increased
+      // Verify guild points increased via read-only function
       const { result: guildResult } = simnet.callReadOnlyFn(
         contractName,
         "get-guild",
@@ -1473,7 +1666,30 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify guild stake
+      // Verify guild stake via map
+      const guildStakeKey = Cl.tuple({
+        "guild-id": Cl.uint(1),
+        "event-id": Cl.uint(1),
+      });
+      const guildStake = simnet.getMapEntry(contractName, "guild-yes-stakes", guildStakeKey);
+      expect(guildStake).toBeSome(Cl.uint(100));
+
+      // Verify guild points reduced via map
+      const guild = simnet.getMapEntry(contractName, "guilds", Cl.uint(1));
+      expect(guild).toBeSome(
+        Cl.tuple({
+          creator: Cl.principal(address1),
+          name: Cl.stringAscii("Test Guild"),
+          "total-points": Cl.uint(400), // 500 - 100
+          "member-count": Cl.uint(2),
+        })
+      );
+
+      // Verify total guild YES stakes via data var
+      const totalGuildYesStakes = simnet.getDataVar(contractName, "total-guild-yes-stakes");
+      expect(totalGuildYesStakes).toBeUint(100);
+
+      // Verify guild stake via read-only function
       const { result: stakeResult } = simnet.callReadOnlyFn(
         contractName,
         "get-guild-yes-stake",
@@ -1482,7 +1698,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(stakeResult).toBeSome(Cl.uint(100));
 
-      // Verify guild points reduced
+      // Verify guild points reduced via read-only function
       const { result: guildResult } = simnet.callReadOnlyFn(
         contractName,
         "get-guild",
@@ -1498,7 +1714,7 @@ describe("Roxy Contract Tests", () => {
         })
       );
 
-      // Verify total guild YES stakes
+      // Verify total guild YES stakes via read-only function
       const { result: totalResult } = simnet.callReadOnlyFn(
         contractName,
         "get-total-guild-yes-stakes",
@@ -1580,7 +1796,19 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeOk(Cl.bool(true));
 
-      // Verify total guild NO stakes
+      // Verify guild NO stake via map
+      const guildStakeKey = Cl.tuple({
+        "guild-id": Cl.uint(1),
+        "event-id": Cl.uint(1),
+      });
+      const guildStake = simnet.getMapEntry(contractName, "guild-no-stakes", guildStakeKey);
+      expect(guildStake).toBeSome(Cl.uint(100));
+
+      // Verify total guild NO stakes via data var
+      const totalGuildNoStakes = simnet.getDataVar(contractName, "total-guild-no-stakes");
+      expect(totalGuildNoStakes).toBeUint(100);
+
+      // Verify total guild NO stakes via read-only function
       const { result: totalResult } = simnet.callReadOnlyFn(
         contractName,
         "get-total-guild-no-stakes",
@@ -1706,6 +1934,11 @@ describe("Roxy Contract Tests", () => {
 
   describe("get-admin", () => {
     it("should return admin address", () => {
+      // Verify admin via data var
+      const admin = simnet.getDataVar(contractName, "admin");
+      expect(admin).toStrictEqual(Cl.principal(deployer));
+
+      // Verify admin via read-only function
       const { result } = simnet.callReadOnlyFn(
         contractName,
         "get-admin",
@@ -1722,6 +1955,27 @@ describe("Roxy Contract Tests", () => {
     });
 
     it("should return transaction log", () => {
+      // Verify transaction log via map
+      const transactionLog = simnet.getMapEntry(contractName, "transaction-logs", Cl.uint(1));
+      expect(transactionLog).toBeSome(
+        Cl.tuple({
+          action: Cl.stringAscii("register"),
+          user: Cl.principal(address1),
+          "event-id": Cl.none(),
+          "listing-id": Cl.none(),
+          amount: Cl.some(Cl.uint(1000)),
+          metadata: Cl.stringAscii("alice"),
+        })
+      );
+
+      // Verify next-log-id data var
+      const nextLogId = simnet.getDataVar(contractName, "next-log-id");
+      expect(nextLogId.type).toBe("uint");
+      if (nextLogId.type === "uint") {
+        expect(nextLogId.value).toBeGreaterThanOrEqual(1);
+      }
+
+      // Verify transaction log via read-only function
       const { result } = simnet.callReadOnlyFn(
         contractName,
         "get-transaction-log",
