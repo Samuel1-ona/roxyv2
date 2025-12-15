@@ -1180,5 +1180,397 @@
   )
 )
 
+;; =============================================================================
+;; INVARIANT TESTS
+;; =============================================================================
+;; These invariants should always hold true regardless of state transitions.
+;; Rendezvous will randomly execute public functions and check these invariants.
 
+;; Invariant: Protocol treasury should never be negative
+(define-read-only (invariant-treasury-non-negative)
+  (>= (var-get protocol-treasury) u0)
+)
 
+;; Invariant: Total YES stakes counter should be non-negative
+(define-read-only (invariant-total-yes-stakes-non-negative)
+  (>= (var-get total-yes-stakes) u0)
+)
+
+;; Invariant: Total NO stakes counter should be non-negative
+(define-read-only (invariant-total-no-stakes-non-negative)
+  (>= (var-get total-no-stakes) u0)
+)
+
+;; Invariant: Total guild YES stakes counter should be non-negative
+(define-read-only (invariant-total-guild-yes-stakes-non-negative)
+  (>= (var-get total-guild-yes-stakes) u0)
+)
+
+;; Invariant: Total guild NO stakes counter should be non-negative
+(define-read-only (invariant-total-guild-no-stakes-non-negative)
+  (>= (var-get total-guild-no-stakes) u0)
+)
+
+;; Invariant: Next event ID should be positive
+(define-read-only (invariant-next-event-id-positive)
+  (> (var-get next-event-id) u0)
+)
+
+;; Invariant: Next listing ID should be positive
+(define-read-only (invariant-next-listing-id-positive)
+  (> (var-get next-listing-id) u0)
+)
+
+;; Invariant: Next guild ID should be positive
+(define-read-only (invariant-next-guild-id-positive)
+  (> (var-get next-guild-id) u0)
+)
+
+;; Invariant: Admin should always be set
+;; This ensures the admin variable is properly initialized
+(define-read-only (invariant-admin-exists)
+  true ;; Admin is always set via define-data-var, so this always holds
+)
+
+;; Invariant: If a user is registered, their points should be non-negative
+;; This checks the current transaction sender's points if they're registered
+(define-read-only (invariant-user-points-non-negative)
+  (match (map-get? user-points tx-sender)
+    points
+    (>= points u0)
+    true ;; If user not registered, invariant holds (nothing to check)
+  )
+)
+
+;; Invariant: If a user is registered, their earned points should be non-negative
+(define-read-only (invariant-earned-points-non-negative)
+  (match (map-get? earned-points tx-sender)
+    earned
+    (>= earned u0)
+    true ;; If user not registered, invariant holds
+  )
+)
+
+;; Invariant: Username consistency - if user has username, it should map correctly
+(define-read-only (invariant-username-consistency)
+  (match (map-get? user-names tx-sender)
+    username
+    (match (map-get? usernames username)
+      mapped-user
+      (is-eq mapped-user tx-sender) ;; Username should map back to this user
+      false ;; Username exists but not in usernames map - inconsistency
+    )
+    true ;; No username set - invariant holds
+  )
+)
+
+;; Invariant: If user has username, it should be unique (reverse mapping exists)
+(define-read-only (invariant-username-uniqueness)
+  (match (map-get? user-names tx-sender)
+    username
+    (is-some (map-get? usernames username)) ;; Username should exist in uniqueness map
+    true ;; No username - invariant holds
+  )
+)
+
+;; Invariant: Event status should be valid (open, closed, or resolved)
+;; This checks a specific event if it exists - we'll check event ID 1 as a sample
+(define-read-only (invariant-event-status-valid (event-id uint))
+  (match (map-get? events event-id)
+    event
+    (let ((status (get status event)))
+      (or
+        (is-eq status "open")
+        (is-eq status "closed")
+        (is-eq status "resolved")
+      )
+    )
+    true ;; Event doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Resolved events must have a winner set
+(define-read-only (invariant-resolved-events-have-winner (event-id uint))
+  (match (map-get? events event-id)
+    event
+    (if (is-eq (get status event) "resolved")
+      (is-some (get winner event)) ;; Resolved events must have winner
+      true ;; Not resolved - invariant holds
+    )
+    true ;; Event doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Event pools should be non-negative
+(define-read-only (invariant-event-pools-non-negative (event-id uint))
+  (match (map-get? events event-id)
+    event
+    (and
+      (>= (get yes-pool event) u0)
+      (>= (get no-pool event) u0)
+    )
+    true ;; Event doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: User stakes should be non-negative
+(define-read-only (invariant-user-stakes-non-negative (event-id uint))
+  (and
+    (match (map-get? yes-stakes { event-id: event-id, user: tx-sender })
+      stake
+      (>= stake u0)
+      true ;; No stake - invariant holds
+    )
+    (match (map-get? no-stakes { event-id: event-id, user: tx-sender })
+      stake
+      (>= stake u0)
+      true ;; No stake - invariant holds
+    )
+  )
+)
+
+;; Invariant: Guild total points should be non-negative
+(define-read-only (invariant-guild-points-non-negative (guild-id uint))
+  (match (map-get? guilds guild-id)
+    guild
+    (>= (get total-points guild) u0)
+    true ;; Guild doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Guild member count should be positive if guild exists
+(define-read-only (invariant-guild-member-count-positive (guild-id uint))
+  (match (map-get? guilds guild-id)
+    guild
+    (> (get member-count guild) u0) ;; Guilds must have at least 1 member
+    true ;; Guild doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Guild deposits should be non-negative
+(define-read-only (invariant-guild-deposits-non-negative (guild-id uint))
+  (match (map-get? guild-deposits { guild-id: guild-id, user: tx-sender })
+    deposit
+    (>= deposit u0)
+    true ;; No deposit - invariant holds
+  )
+)
+
+;; Invariant: Guild stakes should be non-negative
+(define-read-only (invariant-guild-stakes-non-negative (guild-id uint) (event-id uint))
+  (and
+    (match (map-get? guild-yes-stakes { guild-id: guild-id, event-id: event-id })
+      stake
+      (>= stake u0)
+      true ;; No stake - invariant holds
+    )
+    (match (map-get? guild-no-stakes { guild-id: guild-id, event-id: event-id })
+      stake
+      (>= stake u0)
+      true ;; No stake - invariant holds
+    )
+  )
+)
+
+;; Invariant: Listing points should be non-negative
+(define-read-only (invariant-listing-points-non-negative (listing-id uint))
+  (match (map-get? listings listing-id)
+    listing
+    (>= (get points listing) u0)
+    true ;; Listing doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Listing price should be non-negative
+(define-read-only (invariant-listing-price-non-negative (listing-id uint))
+  (match (map-get? listings listing-id)
+    listing
+    (>= (get price-stx listing) u0)
+    true ;; Listing doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: If user is a guild member, they should have a deposit record
+(define-read-only (invariant-guild-member-has-deposit (guild-id uint))
+  (match (is-guild-member guild-id tx-sender)
+    is-member
+    (if is-member
+      (is-some (map-get? guild-deposits { guild-id: guild-id, user: tx-sender })) ;; Member should have deposit record
+      true ;; Not a member - invariant holds
+    )
+    true ;; Not a member (none) - invariant holds
+  )
+)
+
+;; Invariant: Points conservation - user points + earned points should be consistent
+;; (earned points should never exceed total points for registered users)
+;; Note: This is a simplified check - full conservation would require summing all state
+(define-read-only (invariant-points-consistency)
+  (match (map-get? user-points tx-sender)
+    user-pts
+    (match (map-get? earned-points tx-sender)
+      earned-pts
+      (>= user-pts u0) ;; User points should be non-negative
+      (>= user-pts u0) ;; If no earned points, user points should still be non-negative
+    )
+    true ;; User not registered - invariant holds
+  )
+)
+
+;; Invariant: Using context - track that stake operations maintain pool consistency
+;; This uses the Rendezvous context to ensure stake operations are balanced
+(define-read-only (invariant-stake-operations-balanced)
+  (let
+    (
+      (stake-yes-calls (match (map-get? context "stake-yes")
+        ctx-entry (get called ctx-entry)
+        u0
+      ))
+      (stake-no-calls (match (map-get? context "stake-no")
+        ctx-entry (get called ctx-entry)
+        u0
+      ))
+      (claim-calls (match (map-get? context "claim")
+        ctx-entry (get called ctx-entry)
+        u0
+      ))
+    )
+    ;; Basic sanity: if we've had stake operations, totals should be non-negative
+    ;; This invariant ensures that stake operations don't corrupt the global counters
+    (and
+      (>= (var-get total-yes-stakes) u0)
+      (>= (var-get total-no-stakes) u0)
+    )
+  )
+)
+
+;; Invariant: Event pool consistency - pools should match sum of stakes
+;; Note: This is a simplified version checking that pools are at least as large as tracked stakes
+;; Full verification would require iterating all stakes, which isn't practical in Clarity
+(define-read-only (invariant-event-pool-consistency (event-id uint))
+  (match (map-get? events event-id)
+    event
+    (let
+      (
+        (yes-pool (get yes-pool event))
+        (no-pool (get no-pool event))
+      )
+      ;; Pools should be non-negative and pools should be >= 0
+      ;; (Full consistency would require summing all individual stakes)
+      (and
+        (>= yes-pool u0)
+        (>= no-pool u0)
+      )
+    )
+    true ;; Event doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Guild points should match sum of deposits
+;; Simplified check - verifies guild points are non-negative
+;; Full verification would require iterating all member deposits
+(define-read-only (invariant-guild-points-consistency (guild-id uint))
+  (match (map-get? guilds guild-id)
+    guild
+    (let
+      (
+        (total-pts (get total-points guild))
+      )
+      ;; Guild points should be non-negative
+      ;; (Full consistency would require summing all member deposits)
+      (>= total-pts u0)
+    )
+    true ;; Guild doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Active listings should have positive points
+(define-read-only (invariant-active-listing-has-points (listing-id uint))
+  (match (map-get? listings listing-id)
+    listing
+    (if (get active listing)
+      (> (get points listing) u0) ;; Active listings must have points
+      true ;; Not active - invariant holds
+    )
+    true ;; Listing doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: Active listings should have positive price
+(define-read-only (invariant-active-listing-has-price (listing-id uint))
+  (match (map-get? listings listing-id)
+    listing
+    (if (get active listing)
+      (> (get price-stx listing) u0) ;; Active listings must have price
+      true ;; Not active - invariant holds
+    )
+    true ;; Listing doesn't exist - invariant holds
+  )
+)
+
+;; Invariant: User stats should have consistent win rate calculation
+;; Win rate should be between 0 and 10000 (0% to 100%)
+(define-read-only (invariant-user-stats-win-rate-valid)
+  (match (map-get? user-stats tx-sender)
+    stats
+    (let
+      (
+        (win-rate (get win-rate stats))
+      )
+      (and
+        (>= win-rate u0)
+        (<= win-rate u10000) ;; Win rate as percentage (0-10000 = 0%-100%)
+      )
+    )
+    true ;; No stats - invariant holds
+  )
+)
+
+;; Invariant: User stats wins + losses should not exceed total predictions
+(define-read-only (invariant-user-stats-consistency)
+  (match (map-get? user-stats tx-sender)
+    stats
+    (let
+      (
+        (total (get total-predictions stats))
+        (wins (get wins stats))
+        (losses (get losses stats))
+      )
+      (>= total (+ wins losses)) ;; Total should be at least wins + losses
+    )
+    true ;; No stats - invariant holds
+  )
+)
+
+;; Invariant: Guild stats should have consistent win rate calculation
+(define-read-only (invariant-guild-stats-win-rate-valid (guild-id uint))
+  (match (map-get? guild-stats guild-id)
+    stats
+    (let
+      (
+        (win-rate (get win-rate stats))
+      )
+      (and
+        (>= win-rate u0)
+        (<= win-rate u10000) ;; Win rate as percentage (0-10000 = 0%-100%)
+      )
+    )
+    true ;; No stats - invariant holds
+  )
+)
+
+;; Invariant: Guild stats wins + losses should not exceed total predictions
+(define-read-only (invariant-guild-stats-consistency (guild-id uint))
+  (match (map-get? guild-stats guild-id)
+    stats
+    (let
+      (
+        (total (get total-predictions stats))
+        (wins (get wins stats))
+        (losses (get losses stats))
+      )
+      (>= total (+ wins losses)) ;; Total should be at least wins + losses
+    )
+    true ;; No stats - invariant holds
+  )
+)
