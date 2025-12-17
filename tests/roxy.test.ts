@@ -2089,6 +2089,170 @@ describe("Roxy Contract Tests", () => {
     });
   });
 
+  describe("admin configuration functions", () => {
+    beforeEach(() => {
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("admin")], deployer);
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("alice")], address1);
+    });
+
+    it("should transfer admin successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "transfer-admin",
+        [Cl.principal(address1)],
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      // Verify new admin
+      const { result: adminResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-admin",
+        [],
+        address1
+      );
+      expect(adminResult).toBeOk(Cl.principal(address1));
+    });
+
+    it("should fail transfer-admin if not admin", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "transfer-admin",
+        [Cl.principal(address2)],
+        address1
+      );
+      expect(result).toBeErr(Cl.uint(2)); // ERR-NOT-ADMIN
+    });
+
+    it("should set min-earned-for-sell successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-min-earned-for-sell",
+        [Cl.uint(5000)],
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      const { result: getResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-min-earned-for-sell",
+        [],
+        address1
+      );
+      expect(getResult).toStrictEqual(Cl.uint(5000));
+    });
+
+    it("should set listing-fee successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-listing-fee",
+        [Cl.uint(5000000)], // 5 STX
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      const { result: getResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-listing-fee",
+        [],
+        address1
+      );
+      expect(getResult).toStrictEqual(Cl.uint(5000000));
+    });
+
+    it("should set protocol-fee-bps successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-protocol-fee-bps",
+        [Cl.uint(500)], // 5%
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      const { result: getResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-protocol-fee-bps",
+        [],
+        address1
+      );
+      expect(getResult).toStrictEqual(Cl.uint(500));
+    });
+
+    it("should fail set-protocol-fee-bps if > 10%", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-protocol-fee-bps",
+        [Cl.uint(1500)], // 15% - too high
+        deployer
+      );
+      expect(result).toBeErr(Cl.uint(4)); // ERR-INVALID-AMOUNT
+    });
+
+    it("should set admin-point-price successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-admin-point-price",
+        [Cl.uint(2000)], // 2000 micro-STX per point
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      const { result: getResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-admin-point-price",
+        [],
+        address1
+      );
+      expect(getResult).toStrictEqual(Cl.uint(2000));
+    });
+
+    it("should fail set-admin-point-price if 0", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-admin-point-price",
+        [Cl.uint(0)],
+        deployer
+      );
+      expect(result).toBeErr(Cl.uint(4)); // ERR-INVALID-AMOUNT
+    });
+
+    it("should set starting-points successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "set-starting-points",
+        [Cl.uint(500)],
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      const { result: getResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-starting-points",
+        [],
+        address1
+      );
+      expect(getResult).toStrictEqual(Cl.uint(500));
+
+      // New user should get 500 points
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("bob")], address2);
+      const { result: pointsResult } = simnet.callReadOnlyFn(
+        contractName,
+        "get-user-points",
+        [Cl.principal(address2)],
+        address2
+      );
+      expect(pointsResult).toBeOk(Cl.some(Cl.uint(500)));
+    });
+
+    it("should fail all setters if not admin", () => {
+      expect(simnet.callPublicFn(contractName, "set-min-earned-for-sell", [Cl.uint(5000)], address1).result).toBeErr(Cl.uint(2));
+      expect(simnet.callPublicFn(contractName, "set-listing-fee", [Cl.uint(5000000)], address1).result).toBeErr(Cl.uint(2));
+      expect(simnet.callPublicFn(contractName, "set-protocol-fee-bps", [Cl.uint(500)], address1).result).toBeErr(Cl.uint(2));
+      expect(simnet.callPublicFn(contractName, "set-admin-point-price", [Cl.uint(2000)], address1).result).toBeErr(Cl.uint(2));
+      expect(simnet.callPublicFn(contractName, "set-starting-points", [Cl.uint(500)], address1).result).toBeErr(Cl.uint(2));
+    });
+  });
+
   describe("get-transaction-log", () => {
     beforeEach(() => {
       simnet.callPublicFn(contractName, "register", [Cl.stringAscii("alice")], address1);
