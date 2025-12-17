@@ -10,11 +10,14 @@
 ;;
 
 ;; constants
-(define-constant STARTING_POINTS u1000)
-(define-constant MIN_EARNED_FOR_SELL u10000)
-(define-constant LISTING_FEE u10000000) ;; 10 STX in micro-STX
-(define-constant PROTOCOL_FEE_BPS u200) ;; 2% = 200 basis points
 (define-constant BPS_DENOMINATOR u10000)
+
+;; configurable parameters (can be changed by admin)
+(define-data-var starting-points uint u1000)
+(define-data-var min-earned-for-sell uint u10000)
+(define-data-var listing-fee uint u10000000) ;; 10 STX in micro-STX
+(define-data-var protocol-fee-bps uint u200) ;; 2% = 200 basis points
+(define-data-var admin-point-price uint u1000) ;; 1000 micro-STX per point (1 STX = 1000 points)
 
 ;; error constants
 (define-constant ERR-USER-ALREADY-REGISTERED (err u1))
@@ -53,6 +56,7 @@
 (define-data-var total-no-stakes uint u0) ;; Total NO stakes across all events
 (define-data-var total-guild-yes-stakes uint u0) ;; Total guild YES stakes across all events
 (define-data-var total-guild-no-stakes uint u0) ;; Total guild NO stakes across all events
+(define-data-var total-admin-minted-points uint u0) ;; Total points minted by admin
 
 ;; data maps
 ;; User Point System
@@ -237,7 +241,7 @@
           existing-user
           ERR-USERNAME-TAKEN ;; Username already taken
           (begin
-            (map-set user-points user STARTING_POINTS)
+            (map-set user-points user (var-get starting-points))
             (map-set earned-points user u0) ;; Starting points don't count as earned
             (map-set user-names user username)
             (map-set usernames username user) ;; Store username -> user mapping for uniqueness
@@ -246,7 +250,7 @@
               event: "user-registered",
               user: user,
               username: username,
-              points: STARTING_POINTS,
+              points: (var-get starting-points),
             })
             ;; Log transaction
             (let ((log-id (var-get next-log-id)))
@@ -255,7 +259,7 @@
                 user: user,
                 event-id: none,
                 listing-id: none,
-                amount: (some STARTING_POINTS),
+                amount: (some (var-get starting-points)),
                 metadata: username,
               })
               (var-set next-log-id (+ log-id u1))
@@ -1300,16 +1304,16 @@
     (match (map-get? earned-points seller)
       earned
       (begin
-        (asserts! (>= earned MIN_EARNED_FOR_SELL) ERR-INSUFFICIENT-EARNED-POINTS) ;; Must have earned at least 10,000 points
+        (asserts! (>= earned (var-get min-earned-for-sell)) ERR-INSUFFICIENT-EARNED-POINTS) ;; Must have earned minimum points
         (match (map-get? user-points seller)
           current-points
           (begin
             (asserts! (>= current-points points) ERR-INSUFFICIENT-POINTS) ;; Insufficient points
             ;; Transfer STX listing fee to contract
-            (try! (stx-transfer? LISTING_FEE seller (as-contract tx-sender)))
+            (try! (stx-transfer? (var-get listing-fee) seller (as-contract tx-sender)))
             ;; Add listing fee to protocol treasury
             (var-set protocol-treasury
-              (+ (var-get protocol-treasury) LISTING_FEE)
+              (+ (var-get protocol-treasury) (var-get listing-fee))
             )
             ;; Lock seller's points by deducting them
             (map-set user-points seller (- current-points points))
@@ -1414,7 +1418,7 @@
           (let (
               (price-per-point (/ total-price-stx total-points))
               (actual-price-stx (* price-per-point points-to-buy))
-              (protocol-fee (/ (* actual-price-stx PROTOCOL_FEE_BPS) BPS_DENOMINATOR))
+              (protocol-fee (/ (* actual-price-stx (var-get protocol-fee-bps)) BPS_DENOMINATOR))
               (seller-amount (- actual-price-stx protocol-fee))
               (remaining-points (- total-points points-to-buy))
               (remaining-price-stx (- total-price-stx actual-price-stx))
@@ -1611,6 +1615,135 @@
         (var-set next-log-id (+ log-id u1))
       )
       (ok true)
+    )
+  )
+)
+
+;; ============================================================================
+;; 10b. mint-admin-points (points)
+;; ============================================================================
+;; Purpose: Admin mints points to themselves for selling to users who need points.
+;;
+;; Details:
+;;   - Only callable by admin
+;;   - Mints points directly to admin's user-points balance
+;;   - Does NOT add to earned-points (won't affect leaderboard)
+;;   - No fee charged
+;;
+;; Parameters:
+;;   - points: uint - Number of points to mint
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;;   - ERR-INVALID-AMOUNT if points <= 0
+;; ============================================================================
+(define-public (mint-admin-points (points uint))
+  (let (
+      (caller tx-sender)
+      (admin-principal (var-get admin))
+    )
+    (asserts! (is-eq caller admin-principal) ERR-NOT-ADMIN)
+    (asserts! (> points u0) ERR-INVALID-AMOUNT)
+    ;; Add points to admin's balance
+    (match (map-get? user-points admin-principal)
+      current-points
+      (map-set user-points admin-principal (+ current-points points))
+      (map-set user-points admin-principal points)
+    )
+    ;; Track total minted points
+    (var-set total-admin-minted-points (+ (var-get total-admin-minted-points) points))
+    ;; Emit event
+    (print {
+      event: "admin-points-minted",
+      admin: admin-principal,
+      points: points,
+    })
+    ;; Log transaction
+    (let ((log-id (var-get next-log-id)))
+      (map-set transaction-logs log-id {
+        action: "mint-admin-points",
+        user: admin-principal,
+        event-id: none,
+        listing-id: none,
+        amount: (some points),
+        metadata: "admin-points-minted",
+      })
+      (var-set next-log-id (+ log-id u1))
+    )
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 10c. buy-admin-points (points-to-buy)
+;; ============================================================================
+;; Purpose: Users buy points directly from admin at a fixed rate, no fees.
+;;
+;; Details:
+;;   - Anyone can call this to buy points from admin
+;;   - Fixed price: 1 STX per 1000 points (1000 micro-STX per point)
+;;   - STX goes directly into the contract (protocol treasury)
+;;   - Points deducted from admin's balance, added to buyer's balance
+;;   - No protocol fee charged
+;;   - Does NOT add to buyer's earned-points (won't affect leaderboard)
+;;
+;; Parameters:
+;;   - points-to-buy: uint - Number of points to buy
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-INVALID-AMOUNT if points-to-buy <= 0
+;;   - ERR-INSUFFICIENT-POINTS if admin doesn't have enough points
+;; ============================================================================
+
+
+(define-public (buy-admin-points (points-to-buy uint))
+  (let (
+      (buyer tx-sender)
+      (admin-principal (var-get admin))
+      (total-price (* points-to-buy (var-get admin-point-price)))
+    )
+    (asserts! (> points-to-buy u0) ERR-INVALID-AMOUNT)
+    ;; Check admin has enough points
+    (match (map-get? user-points admin-principal)
+      admin-points
+      (begin
+        (asserts! (>= admin-points points-to-buy) ERR-INSUFFICIENT-POINTS)
+        ;; Transfer STX from buyer to contract (no fee, all goes to treasury)
+        (try! (stx-transfer? total-price buyer (as-contract tx-sender)))
+        ;; Add to protocol treasury
+        (var-set protocol-treasury (+ (var-get protocol-treasury) total-price))
+        ;; Deduct points from admin
+        (map-set user-points admin-principal (- admin-points points-to-buy))
+        ;; Add points to buyer
+        (match (map-get? user-points buyer)
+          buyer-points
+          (map-set user-points buyer (+ buyer-points points-to-buy))
+          (map-set user-points buyer points-to-buy)
+        )
+        ;; Emit event
+        (print {
+          event: "admin-points-bought",
+          buyer: buyer,
+          points: points-to-buy,
+          price-stx: total-price,
+        })
+        ;; Log transaction
+        (let ((log-id (var-get next-log-id)))
+          (map-set transaction-logs log-id {
+            action: "buy-admin-points",
+            user: buyer,
+            event-id: none,
+            listing-id: none,
+            amount: (some points-to-buy),
+            metadata: "admin-points-bought",
+          })
+          (var-set next-log-id (+ log-id u1))
+        )
+        (ok true)
+      )
+      ERR-INSUFFICIENT-POINTS ;; Admin has no points
     )
   )
 )
@@ -2848,7 +2981,7 @@
 ;; ============================================================================
 (define-read-only (can-sell (user principal))
   (match (map-get? earned-points user)
-    earned (ok (>= earned MIN_EARNED_FOR_SELL))
+    earned (ok (>= earned (var-get min-earned-for-sell)))
     (ok false)
   )
 )
@@ -2989,6 +3122,17 @@
 )
 
 ;; ============================================================================
+;; 18b. get-total-admin-minted-points
+;; ============================================================================
+;; Purpose: Get the total points minted by admin.
+;;
+;; Returns: (ok total-minted-points)
+;; ============================================================================
+(define-read-only (get-total-admin-minted-points)
+  (ok (var-get total-admin-minted-points))
+)
+
+;; ============================================================================
 ;; 19. get-admin
 ;; ============================================================================
 ;; Purpose: Get the admin principal address.
@@ -3003,6 +3147,143 @@
 (define-read-only (get-admin)
   (ok (var-get admin))
 )
+
+;; ============================================================================
+;; 19b. transfer-admin (new-admin)
+;; ============================================================================
+;; Purpose: Transfer admin role to a new principal.
+;;
+;; Parameters:
+;;   - new-admin: principal - The new admin's principal address
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (transfer-admin (new-admin principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (var-set admin new-admin)
+    (print { event: "admin-transferred", old-admin: tx-sender, new-admin: new-admin })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 19c. set-min-earned-for-sell (amount)
+;; ============================================================================
+;; Purpose: Set minimum earned points required to create listings (admin only).
+;;
+;; Parameters:
+;;   - amount: uint - New minimum earned points threshold
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (set-min-earned-for-sell (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (var-set min-earned-for-sell amount)
+    (print { event: "min-earned-for-sell-updated", new-value: amount })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 19d. set-listing-fee (amount)
+;; ============================================================================
+;; Purpose: Set the listing fee in micro-STX (admin only).
+;;
+;; Parameters:
+;;   - amount: uint - New listing fee in micro-STX
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (set-listing-fee (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (var-set listing-fee amount)
+    (print { event: "listing-fee-updated", new-value: amount })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 19e. set-protocol-fee-bps (bps)
+;; ============================================================================
+;; Purpose: Set the protocol fee in basis points (admin only).
+;;
+;; Parameters:
+;;   - bps: uint - New protocol fee in basis points (100 = 1%)
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (set-protocol-fee-bps (bps uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (asserts! (<= bps u1000) ERR-INVALID-AMOUNT) ;; Max 10%
+    (var-set protocol-fee-bps bps)
+    (print { event: "protocol-fee-bps-updated", new-value: bps })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 19f. set-admin-point-price (price)
+;; ============================================================================
+;; Purpose: Set the price per point for admin point sales (admin only).
+;;
+;; Parameters:
+;;   - price: uint - New price in micro-STX per point
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (set-admin-point-price (price uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (asserts! (> price u0) ERR-INVALID-AMOUNT)
+    (var-set admin-point-price price)
+    (print { event: "admin-point-price-updated", new-value: price })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 19g. set-starting-points (amount)
+;; ============================================================================
+;; Purpose: Set starting points for new users (admin only).
+;;
+;; Parameters:
+;;   - amount: uint - New starting points amount
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;; ============================================================================
+(define-public (set-starting-points (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (var-set starting-points amount)
+    (print { event: "starting-points-updated", new-value: amount })
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; Read-only getters for configurable parameters
+;; ============================================================================
+(define-read-only (get-min-earned-for-sell) (var-get min-earned-for-sell))
+(define-read-only (get-listing-fee) (var-get listing-fee))
+(define-read-only (get-protocol-fee-bps) (var-get protocol-fee-bps))
+(define-read-only (get-admin-point-price) (var-get admin-point-price))
+(define-read-only (get-starting-points) (var-get starting-points))
 
 ;; ============================================================================
 ;; 21. get-guild (guild-id)

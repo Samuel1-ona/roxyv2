@@ -1181,6 +1181,146 @@
 )
 
 ;; =============================================================================
+;; ADMIN POINTS MINTING AND BUYING TESTS
+;; =============================================================================
+
+;; Property: Mint admin points input validation (admin only - may fail)
+(define-public (test-mint-admin-points-fuzz (points uint))
+  (begin
+    (unwrap! (mint-admin-points points) (ok false))
+    (ok true)
+  )
+)
+
+;; Property: Buy admin points input validation
+(define-public (test-buy-admin-points-fuzz (points-to-buy uint))
+  (begin
+    (unwrap! (buy-admin-points points-to-buy) (ok false))
+    (ok true)
+  )
+)
+
+;; Property: Mint admin points should increase admin's user-points but NOT earned-points
+(define-public (test-mint-admin-points-property (points uint))
+  (if (or
+      ;; Precondition 1: points must be > 0
+      (is-eq points u0)
+      ;; Precondition 2: caller must be admin
+      (not (is-eq tx-sender (var-get admin)))
+    )
+    ;; Discard if preconditions aren't met
+    (ok false)
+    ;; Run the test
+    (let (
+        (admin-principal (var-get admin))
+        (initial-user-points (default-to u0 (map-get? user-points admin-principal)))
+        (initial-earned-points (default-to u0 (map-get? earned-points admin-principal)))
+        (initial-total-minted (var-get total-admin-minted-points))
+      )
+      (unwrap! (mint-admin-points points) (ok false))
+      (let (
+          (final-user-points (default-to u0 (map-get? user-points admin-principal)))
+          (final-earned-points (default-to u0 (map-get? earned-points admin-principal)))
+          (final-total-minted (var-get total-admin-minted-points))
+        )
+        ;; Verify property: user-points increased by minted amount
+        (asserts! (is-eq final-user-points (+ initial-user-points points))
+          (err u950)
+        )
+        ;; Verify property: earned-points NOT increased (shouldn't affect leaderboard)
+        (asserts! (is-eq final-earned-points initial-earned-points)
+          (err u949)
+        )
+        ;; Verify property: total-admin-minted-points increased
+        (asserts! (is-eq final-total-minted (+ initial-total-minted points))
+          (err u948)
+        )
+        (ok true)
+      )
+    )
+  )
+)
+
+;; Property: Buy admin points should transfer points from admin to buyer, NOT add to earned-points
+(define-public (test-buy-admin-points-property (points-to-buy uint))
+  (if (or
+      ;; Precondition 1: points-to-buy must be > 0
+      (is-eq points-to-buy u0)
+      ;; Precondition 2: admin must have enough points
+      (< (default-to u0 (map-get? user-points (var-get admin))) points-to-buy)
+    )
+    ;; Discard if preconditions aren't met
+    (ok false)
+    ;; Run the test
+    (let (
+        (admin-principal (var-get admin))
+        (buyer tx-sender)
+        (initial-admin-points (default-to u0 (map-get? user-points admin-principal)))
+        (initial-buyer-points (default-to u0 (map-get? user-points buyer)))
+        (initial-buyer-earned (default-to u0 (map-get? earned-points buyer)))
+        (initial-treasury (var-get protocol-treasury))
+        (expected-price (* points-to-buy u1000)) ;; ADMIN_POINT_PRICE = 1000 micro-STX per point
+      )
+      (unwrap! (buy-admin-points points-to-buy) (ok false))
+      (let (
+          (final-admin-points (default-to u0 (map-get? user-points admin-principal)))
+          (final-buyer-points (default-to u0 (map-get? user-points buyer)))
+          (final-buyer-earned (default-to u0 (map-get? earned-points buyer)))
+          (final-treasury (var-get protocol-treasury))
+        )
+        ;; Verify property: admin points decreased
+        (asserts! (is-eq final-admin-points (- initial-admin-points points-to-buy))
+          (err u947)
+        )
+        ;; Verify property: buyer points increased
+        (asserts! (is-eq final-buyer-points (+ initial-buyer-points points-to-buy))
+          (err u946)
+        )
+        ;; Verify property: buyer earned-points NOT increased (shouldn't affect leaderboard)
+        (asserts! (is-eq final-buyer-earned initial-buyer-earned)
+          (err u945)
+        )
+        ;; Verify property: treasury increased by payment amount
+        (asserts! (is-eq final-treasury (+ initial-treasury expected-price))
+          (err u944)
+        )
+        (ok true)
+      )
+    )
+  )
+)
+
+;; Property: Bought points should NOT allow selling (earned-points unchanged)
+(define-public (test-buy-admin-points-no-sell-property (points-to-buy uint))
+  (if (or
+      ;; Precondition 1: points-to-buy must be > 0
+      (is-eq points-to-buy u0)
+      ;; Precondition 2: admin must have enough points
+      (< (default-to u0 (map-get? user-points (var-get admin))) points-to-buy)
+      ;; Precondition 3: buyer must NOT already have 10,000+ earned points
+      (>= (default-to u0 (map-get? earned-points tx-sender)) u10000)
+    )
+    ;; Discard if preconditions aren't met
+    (ok false)
+    ;; Run the test
+    (let ((initial-earned (default-to u0 (map-get? earned-points tx-sender))))
+      (unwrap! (buy-admin-points points-to-buy) (ok false))
+      (let ((final-earned (default-to u0 (map-get? earned-points tx-sender))))
+        ;; Verify property: earned-points unchanged after buying
+        (asserts! (is-eq final-earned initial-earned)
+          (err u943)
+        )
+        ;; Verify property: user still cannot sell (earned < 10,000)
+        (asserts! (< final-earned u10000)
+          (err u942)
+        )
+        (ok true)
+      )
+    )
+  )
+)
+
+;; =============================================================================
 ;; INVARIANT TESTS
 ;; =============================================================================
 ;; These invariants should always hold true regardless of state transitions.
@@ -1209,6 +1349,11 @@
 ;; Invariant: Total guild NO stakes counter should be non-negative
 (define-read-only (invariant-total-guild-no-stakes-non-negative)
   (>= (var-get total-guild-no-stakes) u0)
+)
+
+;; Invariant: Total admin minted points should be non-negative
+(define-read-only (invariant-total-admin-minted-points-non-negative)
+  (>= (var-get total-admin-minted-points) u0)
 )
 
 ;; Invariant: Next event ID should be positive
