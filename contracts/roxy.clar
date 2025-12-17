@@ -53,6 +53,8 @@
 (define-data-var total-no-stakes uint u0) ;; Total NO stakes across all events
 (define-data-var total-guild-yes-stakes uint u0) ;; Total guild YES stakes across all events
 (define-data-var total-guild-no-stakes uint u0) ;; Total guild NO stakes across all events
+(define-data-var total-admin-minted-points uint u0) ;; Total points minted by admin
+(define-constant ADMIN_POINT_PRICE u1000) ;; 1000 micro-STX per point (1 STX = 1000 points)
 
 ;; data maps
 ;; User Point System
@@ -1616,6 +1618,135 @@
 )
 
 ;; ============================================================================
+;; 10b. mint-admin-points (points)
+;; ============================================================================
+;; Purpose: Admin mints points to themselves for selling to users who need points.
+;;
+;; Details:
+;;   - Only callable by admin
+;;   - Mints points directly to admin's user-points balance
+;;   - Does NOT add to earned-points (won't affect leaderboard)
+;;   - No fee charged
+;;
+;; Parameters:
+;;   - points: uint - Number of points to mint
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-NOT-ADMIN if caller is not admin
+;;   - ERR-INVALID-AMOUNT if points <= 0
+;; ============================================================================
+(define-public (mint-admin-points (points uint))
+  (let (
+      (caller tx-sender)
+      (admin-principal (var-get admin))
+    )
+    (asserts! (is-eq caller admin-principal) ERR-NOT-ADMIN)
+    (asserts! (> points u0) ERR-INVALID-AMOUNT)
+    ;; Add points to admin's balance
+    (match (map-get? user-points admin-principal)
+      current-points
+      (map-set user-points admin-principal (+ current-points points))
+      (map-set user-points admin-principal points)
+    )
+    ;; Track total minted points
+    (var-set total-admin-minted-points (+ (var-get total-admin-minted-points) points))
+    ;; Emit event
+    (print {
+      event: "admin-points-minted",
+      admin: admin-principal,
+      points: points,
+    })
+    ;; Log transaction
+    (let ((log-id (var-get next-log-id)))
+      (map-set transaction-logs log-id {
+        action: "mint-admin-points",
+        user: admin-principal,
+        event-id: none,
+        listing-id: none,
+        amount: (some points),
+        metadata: "admin-points-minted",
+      })
+      (var-set next-log-id (+ log-id u1))
+    )
+    (ok true)
+  )
+)
+
+;; ============================================================================
+;; 10c. buy-admin-points (points-to-buy)
+;; ============================================================================
+;; Purpose: Users buy points directly from admin at a fixed rate, no fees.
+;;
+;; Details:
+;;   - Anyone can call this to buy points from admin
+;;   - Fixed price: 1 STX per 1000 points (1000 micro-STX per point)
+;;   - STX goes directly into the contract (protocol treasury)
+;;   - Points deducted from admin's balance, added to buyer's balance
+;;   - No protocol fee charged
+;;   - Does NOT add to buyer's earned-points (won't affect leaderboard)
+;;
+;; Parameters:
+;;   - points-to-buy: uint - Number of points to buy
+;;
+;; Returns:
+;;   - (ok true) on success
+;;   - ERR-INVALID-AMOUNT if points-to-buy <= 0
+;;   - ERR-INSUFFICIENT-POINTS if admin doesn't have enough points
+;; ============================================================================
+
+
+(define-public (buy-admin-points (points-to-buy uint))
+  (let (
+      (buyer tx-sender)
+      (admin-principal (var-get admin))
+      (total-price (* points-to-buy ADMIN_POINT_PRICE))
+    )
+    (asserts! (> points-to-buy u0) ERR-INVALID-AMOUNT)
+    ;; Check admin has enough points
+    (match (map-get? user-points admin-principal)
+      admin-points
+      (begin
+        (asserts! (>= admin-points points-to-buy) ERR-INSUFFICIENT-POINTS)
+        ;; Transfer STX from buyer to contract (no fee, all goes to treasury)
+        (try! (stx-transfer? total-price buyer (as-contract tx-sender)))
+        ;; Add to protocol treasury
+        (var-set protocol-treasury (+ (var-get protocol-treasury) total-price))
+        ;; Deduct points from admin
+        (map-set user-points admin-principal (- admin-points points-to-buy))
+        ;; Add points to buyer
+        (match (map-get? user-points buyer)
+          buyer-points
+          (map-set user-points buyer (+ buyer-points points-to-buy))
+          (map-set user-points buyer points-to-buy)
+        )
+        ;; Emit event
+        (print {
+          event: "admin-points-bought",
+          buyer: buyer,
+          points: points-to-buy,
+          price-stx: total-price,
+        })
+        ;; Log transaction
+        (let ((log-id (var-get next-log-id)))
+          (map-set transaction-logs log-id {
+            action: "buy-admin-points",
+            user: buyer,
+            event-id: none,
+            listing-id: none,
+            amount: (some points-to-buy),
+            metadata: "admin-points-bought",
+          })
+          (var-set next-log-id (+ log-id u1))
+        )
+        (ok true)
+      )
+      ERR-INSUFFICIENT-POINTS ;; Admin has no points
+    )
+  )
+)
+
+;; ============================================================================
 ;; 11. create-guild (guild-id, name)
 ;; ============================================================================
 ;; Purpose: Create a new guild for collaborative predictions.
@@ -2986,6 +3117,17 @@
 ;; ============================================================================
 (define-read-only (get-protocol-treasury)
   (ok (var-get protocol-treasury))
+)
+
+;; ============================================================================
+;; 18b. get-total-admin-minted-points
+;; ============================================================================
+;; Purpose: Get the total points minted by admin.
+;;
+;; Returns: (ok total-minted-points)
+;; ============================================================================
+(define-read-only (get-total-admin-minted-points)
+  (ok (var-get total-admin-minted-points))
 )
 
 ;; ============================================================================

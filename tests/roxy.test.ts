@@ -1949,6 +1949,146 @@ describe("Roxy Contract Tests", () => {
     });
   });
 
+  describe("mint-admin-points", () => {
+    beforeEach(() => {
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("admin")], deployer);
+    });
+
+    it("should mint points to admin successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "mint-admin-points",
+        [Cl.uint(5000)],
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      // Verify admin got points
+      const adminPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(deployer));
+      expect(adminPoints).toBeSome(Cl.uint(6000)); // 1000 from register + 5000 minted
+
+      // Verify earned-points NOT increased (shouldn't affect leaderboard)
+      const earnedPoints = simnet.getMapEntry(contractName, "earned-points", Cl.principal(deployer));
+      expect(earnedPoints).toBeSome(Cl.uint(0));
+    });
+
+    it("should fail if not admin", () => {
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("alice")], address1);
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "mint-admin-points",
+        [Cl.uint(5000)],
+        address1
+      );
+      expect(result).toBeErr(Cl.uint(2)); // ERR-NOT-ADMIN
+    });
+
+    it("should fail if points is 0", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "mint-admin-points",
+        [Cl.uint(0)],
+        deployer
+      );
+      expect(result).toBeErr(Cl.uint(4)); // ERR-INVALID-AMOUNT
+    });
+
+    it("should track total minted points via getter", () => {
+      // Mint 5000 points
+      simnet.callPublicFn(contractName, "mint-admin-points", [Cl.uint(5000)], deployer);
+      
+      // Check getter
+      const { result: result1 } = simnet.callReadOnlyFn(
+        contractName,
+        "get-total-admin-minted-points",
+        [],
+        deployer
+      );
+      expect(result1).toBeOk(Cl.uint(5000));
+
+      // Mint another 3000 points
+      simnet.callPublicFn(contractName, "mint-admin-points", [Cl.uint(3000)], deployer);
+
+      // Check getter again - should be cumulative
+      const { result: result2 } = simnet.callReadOnlyFn(
+        contractName,
+        "get-total-admin-minted-points",
+        [],
+        deployer
+      );
+      expect(result2).toBeOk(Cl.uint(8000));
+    });
+  });
+
+  describe("buy-admin-points", () => {
+    beforeEach(() => {
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("admin")], deployer);
+      simnet.callPublicFn(contractName, "register", [Cl.stringAscii("alice")], address1);
+      // Admin mints points to sell
+      simnet.callPublicFn(contractName, "mint-admin-points", [Cl.uint(10000)], deployer);
+    });
+
+    it("should buy points from admin successfully", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "buy-admin-points",
+        [Cl.uint(1000)], // Buy 1000 points = 1 STX
+        address1
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      // Verify buyer got points (1000 from register + 1000 bought)
+      const buyerPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(address1));
+      expect(buyerPoints).toBeSome(Cl.uint(2000));
+
+      // Verify buyer's earned-points NOT increased (shouldn't affect leaderboard)
+      const earnedPoints = simnet.getMapEntry(contractName, "earned-points", Cl.principal(address1));
+      expect(earnedPoints).toBeSome(Cl.uint(0));
+
+      // Verify admin's points decreased (1000 from register + 10000 minted - 1000 sold)
+      const adminPoints = simnet.getMapEntry(contractName, "user-points", Cl.principal(deployer));
+      expect(adminPoints).toBeSome(Cl.uint(10000));
+
+      // Verify protocol treasury increased (1000 points * 1000 micro-STX = 1,000,000 micro-STX)
+      const treasury = simnet.getDataVar(contractName, "protocol-treasury");
+      expect(treasury).toBeUint(1000000);
+    });
+
+    it("should fail if points-to-buy is 0", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "buy-admin-points",
+        [Cl.uint(0)],
+        address1
+      );
+      expect(result).toBeErr(Cl.uint(4)); // ERR-INVALID-AMOUNT
+    });
+
+    it("should fail if admin has insufficient points", () => {
+      const { result } = simnet.callPublicFn(
+        contractName,
+        "buy-admin-points",
+        [Cl.uint(50000)], // More than admin has
+        address1
+      );
+      expect(result).toBeErr(Cl.uint(6)); // ERR-INSUFFICIENT-POINTS
+    });
+
+    it("should not add to buyer earned-points (leaderboard check)", () => {
+      // Buy points
+      simnet.callPublicFn(contractName, "buy-admin-points", [Cl.uint(5000)], address1);
+
+      // Check can-sell returns false (earned-points should still be 0)
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "can-sell",
+        [Cl.principal(address1)],
+        address1
+      );
+      expect(result).toBeOk(Cl.bool(false)); // Can't sell because earned-points is 0
+    });
+  });
+
   describe("get-transaction-log", () => {
     beforeEach(() => {
       simnet.callPublicFn(contractName, "register", [Cl.stringAscii("alice")], address1);
