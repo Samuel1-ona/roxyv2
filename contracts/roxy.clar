@@ -7,12 +7,7 @@
 ;; TRAITS
 ;; ============================================================================
 
-(define-trait roxy-game-trait (
-  (get-player-score
-    (uint principal)
-    (response uint uint)
-  )
-))
+(use-trait roxy-game-trait .roxy-trait.roxy-game-trait)
 
 ;; ============================================================================
 ;; CONSTANTS & ERRORS
