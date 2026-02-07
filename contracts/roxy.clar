@@ -24,6 +24,8 @@
 (define-constant ERR-EVENT-NOT-OPEN (err u8))
 (define-constant ERR-EVENT-CLOSED (err u9))
 (define-constant ERR-REFERRAL-SELF (err u10))
+(define-constant ERR-INVALID-TIME (err u11))
+(define-constant ERR-INVALID-METADATA (err u12))
 
 ;; ============================================================================
 ;; DATA VARIABLES
@@ -124,6 +126,9 @@
       (campaign-id (var-get next-campaign-id))
       (creation-fee (var-get campaign-creation-fee))
     )
+    (asserts! (> end-time start-time) ERR-INVALID-TIME)
+    (asserts! (is-standard reporter) ERR-UNAUTHORIZED)
+    (asserts! (> (len metadata-hash) u0) ERR-INVALID-METADATA)
     ;; Pay creation fee to protocol treasury
     (try! (stx-transfer? creation-fee tx-sender (as-contract tx-sender)))
     (var-set protocol-treasury (+ (var-get protocol-treasury) creation-fee))
@@ -151,6 +156,7 @@
       (campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND))
       (fee (var-get stx-per-usd)) ;; $1 in micro-STX
     )
+    (asserts! (> campaign-id u0) ERR-NOT-FOUND)
     (asserts!
       (is-none (map-get? campaign-participants {
         campaign-id: campaign-id,
@@ -210,6 +216,7 @@
     (asserts! (is-eq (contract-of game-contract) (get reporter campaign))
       ERR-UNAUTHORIZED
     )
+    (asserts! (is-standard player) ERR-UNAUTHORIZED)
 
     (let ((score (try! (contract-call? game-contract get-player-score campaign-id player))))
       (map-set leaderboard {
@@ -238,6 +245,7 @@
         (or (is-eq tx-sender (get creator campaign)) (is-eq tx-sender (get reporter campaign)))
         ERR-UNAUTHORIZED
       )
+      (asserts! (> (len metadata) u0) ERR-INVALID-METADATA)
 
       (map-set events event-id {
         campaign-id: campaign-id,
@@ -261,6 +269,7 @@
   )
   (let ((event (unwrap! (map-get? events event-id) ERR-NOT-FOUND)))
     (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN)
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
 
     (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
 
@@ -396,6 +405,7 @@
 (define-public (set-admin (new-admin principal))
   (begin
     (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    (asserts! (is-standard new-admin) ERR-UNAUTHORIZED)
     (ok (var-set admin new-admin))
   )
 )
