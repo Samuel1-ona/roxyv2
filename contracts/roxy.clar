@@ -26,6 +26,7 @@
 (define-constant ERR-REFERRAL-SELF (err u10))
 (define-constant ERR-INVALID-TIME (err u11))
 (define-constant ERR-INVALID-METADATA (err u12))
+(define-constant ERR-USERNAME-TAKEN (err u13))
 
 ;; ============================================================================
 ;; DATA VARIABLES
@@ -45,6 +46,10 @@
 (define-map user-profiles
   principal
   { username: (string-ascii 50) }
+)
+(define-map usernames
+  (string-ascii 50)
+  principal
 )
 
 (define-map campaigns
@@ -148,6 +153,16 @@
   )
 )
 
+(define-public (update-campaign-status
+    (campaign-id uint)
+    (new-status (string-ascii 20))
+  )
+  (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
+    (asserts! (is-eq tx-sender (get creator campaign)) ERR-UNAUTHORIZED)
+    (ok (map-set campaigns campaign-id (merge campaign { status: new-status })))
+  )
+)
+
 (define-public (join-campaign
     (campaign-id uint)
     (referrer (optional principal))
@@ -227,6 +242,33 @@
       )
       (ok score)
     )
+  )
+)
+
+(define-public (set-username (username (string-ascii 50)))
+  (let (
+      (old-profile (map-get? user-profiles tx-sender))
+      (existing-owner (map-get? usernames username))
+    )
+    (asserts! (> (len username) u0) ERR-INVALID-METADATA)
+    ;; Check if username is taken by someone else
+    (asserts!
+      (or (is-none existing-owner) (is-eq (unwrap-panic existing-owner) tx-sender))
+      ERR-USERNAME-TAKEN
+    )
+
+    ;; If user had an old username, remove it from the unique map
+    (match old-profile
+      profile (if (not (is-eq (get username profile) username))
+        (map-delete usernames (get username profile))
+        true
+      )
+      true
+    )
+
+    ;; Update both maps
+    (map-set usernames username tx-sender)
+    (ok (map-set user-profiles tx-sender { username: username }))
   )
 )
 
@@ -408,4 +450,98 @@
     (asserts! (is-standard new-admin) ERR-UNAUTHORIZED)
     (ok (var-set admin new-admin))
   )
+)
+
+;; ============================================================================
+;; READ-ONLY FUNCTIONS
+;; ============================================================================
+
+(define-read-only (get-campaign (campaign-id uint))
+  (map-get? campaigns campaign-id)
+)
+
+(define-read-only (get-event (event-id uint))
+  (map-get? events event-id)
+)
+
+(define-read-only (get-leaderboard-score
+    (campaign-id uint)
+    (user principal)
+  )
+  (default-to u0
+    (map-get? leaderboard {
+      campaign-id: campaign-id,
+      user: user,
+    })
+  )
+)
+
+(define-read-only (get-yes-stake
+    (event-id uint)
+    (user principal)
+  )
+  (default-to u0
+    (map-get? yes-stakes {
+      event-id: event-id,
+      user: user,
+    })
+  )
+)
+
+(define-read-only (get-no-stake
+    (event-id uint)
+    (user principal)
+  )
+  (default-to u0
+    (map-get? no-stakes {
+      event-id: event-id,
+      user: user,
+    })
+  )
+)
+
+(define-read-only (get-referral
+    (campaign-id uint)
+    (user principal)
+  )
+  (map-get? referrals {
+    campaign-id: campaign-id,
+    user: user,
+  })
+)
+
+(define-read-only (get-participant-status
+    (campaign-id uint)
+    (user principal)
+  )
+  (default-to false
+    (map-get? campaign-participants {
+      campaign-id: campaign-id,
+      user: user,
+    })
+  )
+)
+
+(define-read-only (get-user-profile (user principal))
+  (map-get? user-profiles user)
+)
+
+(define-read-only (get-admin)
+  (var-get admin)
+)
+
+(define-read-only (get-protocol-treasury)
+  (var-get protocol-treasury)
+)
+
+(define-read-only (get-campaign-creation-fee)
+  (var-get campaign-creation-fee)
+)
+
+(define-read-only (get-stx-per-usd)
+  (var-get stx-per-usd)
+)
+
+(define-read-only (get-user-by-username (username (string-ascii 50)))
+  (map-get? usernames username)
 )
