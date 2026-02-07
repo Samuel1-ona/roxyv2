@@ -116,10 +116,41 @@
 ;; SYSTEM INVARIANTS
 ;; =============================================================================
 
-;; Invariant: Contract balance must support treasury
-(define-public (test-invariant-treasury-backing)
-  (let ((bal (stx-get-balance (as-contract tx-sender))))
-    (asserts! (>= bal (var-get protocol-treasury)) (err u950))
+;; @desc Error code for paused protocol
+(define-constant ERR-PAUSED u10)
+
+;; @desc Property: create-campaign should fail when paused
+(define-public (prop-pause-halting (paused bool))
+  (begin
+    (try! (set-paused paused))
+    (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender u100 u200)))
+      (if paused
+        (asserts! (is-eq res (err ERR-PAUSED)) (err u1001))
+        (asserts! (is-ok res) (err u1002))
+      )
+      ;; Reset for next test
+      (try! (set-paused false))
+      (ok true)
+    )
+  )
+)
+
+;; @desc Property: 2-step admin handoff integrity
+(define-public (prop-admin-handoff (new-admin principal))
+  (begin
+    (asserts! (is-standard new-admin) (ok true)) ;; Skip non-standard for this
+    (try! (propose-admin new-admin))
+    ;; Check current admin is still tx-sender
+    (asserts! (is-eq (unwrap-panic (get-admin)) tx-sender) (err u1003))
+    ;; Reset for next test (since we can't easily claim in Rendezvous without changing tx-sender context)
+    (ok true)
+  )
+)
+
+;; @desc Invariant: Treasury must always be backed by contract balance
+(define-public (invariant-treasury-backing)
+  (let ((treasury (unwrap-panic (get-protocol-treasury))))
+    (asserts! (>= (stx-get-balance (as-contract tx-sender)) treasury) (err u901))
     (ok true)
   )
 )
