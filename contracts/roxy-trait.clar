@@ -1,6 +1,6 @@
 ;; title: roxy-trait
-;; version: 1.6.0
-;; summary: Trait definition for Roxy Gaming SDK integration with a complete set of response-based getters.
+;; version: 1.7.0
+;; summary: Trait definition for Roxy Gaming SDK integration with match creation fee support.
 
 (define-trait roxy-game-trait
   (
@@ -56,6 +56,7 @@
     (get-admin () (response principal uint))
     (get-protocol-treasury () (response uint uint))
     (get-campaign-creation-fee () (response uint uint))
+    (get-match-creation-fee () (response uint uint))
     (get-stx-per-usd () (response uint uint))
   )
 )

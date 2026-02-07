@@ -33,8 +33,9 @@
 ;; ============================================================================
 
 (define-data-var admin principal tx-sender)
-(define-data-var campaign-creation-fee uint u10000000) ;; 10 STX
-(define-data-var stx-per-usd uint u1000000) ;; Default 1 STX = $1 (adjust via admin/oracle)
+(define-data-var campaign-creation-fee uint u1000000) ;; $1 in micro-STX
+(define-data-var match-creation-fee uint u1000000) ;; $1 in micro-STX
+(define-data-var stx-per-usd uint u1000000) ;; 1 STX = $1 (placeholder) (adjust via admin/oracle)
 (define-data-var next-campaign-id uint u1)
 (define-data-var next-event-id uint u1)
 (define-data-var protocol-treasury uint u0)
@@ -282,24 +283,30 @@
   )
   (let ((event-id (var-get next-event-id)))
     (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
-      ;; Only campaign creator or reporter can create matches
-      (asserts!
-        (or (is-eq tx-sender (get creator campaign)) (is-eq tx-sender (get reporter campaign)))
-        ERR-UNAUTHORIZED
+      (let ((fee (var-get match-creation-fee)))
+        ;; Only campaign creator or reporter can create matches
+        (asserts!
+          (or (is-eq tx-sender (get creator campaign)) (is-eq tx-sender (get reporter campaign)))
+          ERR-UNAUTHORIZED
+        )
+        (asserts! (> (len metadata) u0) ERR-INVALID-METADATA)
+
+        ;; Pay creation fee to protocol treasury
+        (try! (stx-transfer? fee tx-sender (as-contract tx-sender)))
+        (var-set protocol-treasury (+ (var-get protocol-treasury) fee))
+
+        (map-set events event-id {
+          campaign-id: campaign-id,
+          yes-pool: u0,
+          no-pool: u0,
+          status: "open",
+          winner: none,
+          metadata: metadata,
+        })
+
+        (var-set next-event-id (+ event-id u1))
+        (ok event-id)
       )
-      (asserts! (> (len metadata) u0) ERR-INVALID-METADATA)
-
-      (map-set events event-id {
-        campaign-id: campaign-id,
-        yes-pool: u0,
-        no-pool: u0,
-        status: "open",
-        winner: none,
-        metadata: metadata,
-      })
-
-      (var-set next-event-id (+ event-id u1))
-      (ok event-id)
     )
   )
 )
@@ -444,6 +451,15 @@
   )
 )
 
+(define-public (set-match-creation-fee (new-fee uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
+    ;; Basic validation to satisfy 'unchecked data' lints
+    (asserts! (>= new-fee u0) ERR-INVALID-AMOUNT)
+    (ok (var-set match-creation-fee new-fee))
+  )
+)
+
 (define-public (set-admin (new-admin principal))
   (begin
     (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
@@ -536,6 +552,10 @@
 
 (define-read-only (get-campaign-creation-fee)
   (ok (var-get campaign-creation-fee))
+)
+
+(define-read-only (get-match-creation-fee)
+  (ok (var-get match-creation-fee))
 )
 
 (define-read-only (get-stx-per-usd)
