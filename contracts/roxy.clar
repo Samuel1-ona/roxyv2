@@ -457,91 +457,91 @@
 ;; ============================================================================
 
 (define-read-only (get-campaign (campaign-id uint))
-  (map-get? campaigns campaign-id)
+  (ok (map-get? campaigns campaign-id))
 )
 
 (define-read-only (get-event (event-id uint))
-  (map-get? events event-id)
+  (ok (map-get? events event-id))
 )
 
 (define-read-only (get-leaderboard-score
     (campaign-id uint)
     (user principal)
   )
-  (default-to u0
+  (ok (default-to u0
     (map-get? leaderboard {
       campaign-id: campaign-id,
       user: user,
     })
-  )
+  ))
 )
 
 (define-read-only (get-yes-stake
     (event-id uint)
     (user principal)
   )
-  (default-to u0
+  (ok (default-to u0
     (map-get? yes-stakes {
       event-id: event-id,
       user: user,
     })
-  )
+  ))
 )
 
 (define-read-only (get-no-stake
     (event-id uint)
     (user principal)
   )
-  (default-to u0
+  (ok (default-to u0
     (map-get? no-stakes {
       event-id: event-id,
       user: user,
     })
-  )
+  ))
 )
 
 (define-read-only (get-referral
     (campaign-id uint)
     (user principal)
   )
-  (map-get? referrals {
+  (ok (map-get? referrals {
     campaign-id: campaign-id,
     user: user,
-  })
+  }))
 )
 
 (define-read-only (get-participant-status
     (campaign-id uint)
     (user principal)
   )
-  (default-to false
+  (ok (default-to false
     (map-get? campaign-participants {
       campaign-id: campaign-id,
       user: user,
     })
-  )
+  ))
 )
 
 (define-read-only (get-user-profile (user principal))
-  (map-get? user-profiles user)
+  (ok (map-get? user-profiles user))
 )
 
 (define-read-only (get-admin)
-  (var-get admin)
+  (ok (var-get admin))
 )
 
 (define-read-only (get-protocol-treasury)
-  (var-get protocol-treasury)
+  (ok (var-get protocol-treasury))
 )
 
 (define-read-only (get-campaign-creation-fee)
-  (var-get campaign-creation-fee)
+  (ok (var-get campaign-creation-fee))
 )
 
 (define-read-only (get-stx-per-usd)
-  (var-get stx-per-usd)
+  (ok (var-get stx-per-usd))
 )
 
 (define-read-only (get-user-by-username (username (string-ascii 50)))
-  (map-get? usernames username)
+  (ok (map-get? usernames username))
 )
