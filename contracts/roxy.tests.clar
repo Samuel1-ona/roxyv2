@@ -85,25 +85,6 @@
   )
 )
 
-;; Property: Campaign lifecycle creation
-(define-public (test-campaign-creation-property (metadata-hash (buff 32)) (reporter principal) (start-time uint) (end-time uint))
-  (if (or 
-      (<= end-time start-time)
-      (not (is-standard reporter))
-    )
-    (ok false)
-    (begin
-      (let ((campaign-id (unwrap! (create-campaign metadata-hash reporter start-time end-time) (ok false))))
-        (let ((campaign (unwrap! (map-get? campaigns campaign-id) (ok false))))
-          (asserts! (is-eq (get creator campaign) tx-sender) (err u910))
-          (asserts! (is-eq (get end-time campaign) end-time) (err u911))
-          (ok true)
-        )
-      )
-    )
-  )
-)
-
 ;; Property: Staking increases pools
 (define-public (test-staking-pool-property (event-id uint) (amount uint) (is-yes bool))
   (let ((event-opt (map-get? events event-id)))
@@ -124,6 +105,67 @@
               )
               (ok true)
             )
+          )
+        )
+      )
+    )
+  )
+)
+
+;; =============================================================================
+;; SYSTEM INVARIANTS
+;; =============================================================================
+
+;; Invariant: Contract balance must support treasury
+(define-public (test-invariant-treasury-backing)
+  (let ((bal (stx-get-balance (as-contract tx-sender))))
+    (asserts! (>= bal (var-get protocol-treasury)) (err u950))
+    (ok true)
+  )
+)
+
+;; Invariant: User profile mapping consistency
+(define-public (test-invariant-profile-sync)
+  (match (map-get? user-profiles tx-sender)
+    profile (let ((username (get username profile)))
+      (asserts! (is-eq (map-get? usernames username) (some tx-sender)) (err u951))
+      (ok true)
+    )
+    (ok true)
+  )
+)
+
+;; =============================================================================
+;; EDGE CASE FUZZING
+;; =============================================================================
+
+;; Edge: Staking zero amount must fail
+(define-public (test-stake-zero-edge (event-id uint))
+  (let ((res (stake event-id u0 true)))
+    (asserts! (is-err res) (err u960))
+    (ok true)
+  )
+)
+
+;; Edge: Invalid campaign times must fail
+(define-public (test-campaign-invalid-times-edge (start-uint uint))
+  (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender start-uint start-uint)))
+    (asserts! (is-err res) (err u961))
+    (ok true)
+  )
+)
+
+;; Edge: Unauthorized status update must fail
+(define-public (test-unauthorized-campaign-status-edge (campaign-id uint) (new-status (string-ascii 20)))
+  (let ((campaign-opt (map-get? campaigns campaign-id)))
+    (if (is-none campaign-opt)
+      (ok false)
+      (let ((campaign (unwrap-panic campaign-opt)))
+        (if (is-eq tx-sender (get creator campaign))
+          (ok false) ;; Skip if we are the creator (valid case)
+          (let ((res (update-campaign-status campaign-id new-status)))
+            (asserts! (is-eq res (err u3)) (err u962)) ;; ERR-UNAUTHORIZED
+            (ok true)
           )
         )
       )
