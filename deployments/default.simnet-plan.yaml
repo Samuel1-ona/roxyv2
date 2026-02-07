@@ -64,6 +64,11 @@ plan:
     - id: 0
       transactions:
         - emulated-contract-publish:
+            contract-name: roxy-trait
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/roxy-trait.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: roxy
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/roxy.clar

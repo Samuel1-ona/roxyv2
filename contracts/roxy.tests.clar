@@ -1,188 +1,64 @@
 ;; title: Roxy Tests
-;; version: 1.0.0
+;; version: 2.1.0
 ;; summary: Rendezvous fuzzing test suite for Roxy contract
-;; description: Property-based testing for Bitcoin L2 Prediction Market Game with Points System and Marketplace
+;; description: Property-based testing for STX-Based Gaming Prediction SDK
 
 ;; =============================================================================
 ;; PROPERTY-BASED TESTS FOR RENDEZVOUS
 ;; =============================================================================
 
-;; Basic Fuzzing Tests - Input Validation and Error Handling
-;; These tests ensure the contract can handle various input types without crashing
-
-;; Property: User registration input validation
-(define-public (test-register-fuzz (username (string-ascii 50)))
+;; Property: User registration (set-username) input validation
+(define-public (test-set-username-fuzz (username (string-ascii 50)))
   (begin
-    (unwrap! (register username) (ok false))
+    (unwrap! (set-username username) (ok false))
     (ok true)
   )
 )
 
-;; Property: Event creation input validation (admin only - may fail)
-(define-public (test-create-event-fuzz (event-id uint) (metadata (string-ascii 200)))
+;; Property: Campaign creation input validation
+(define-public (test-create-campaign-fuzz (metadata-hash (buff 32)) (reporter principal) (start-time uint) (end-time uint))
   (begin
-    (unwrap! (create-event event-id metadata) (ok false))
+    (unwrap! (create-campaign metadata-hash reporter start-time end-time) (ok false))
     (ok true)
   )
 )
 
-;; Property: YES staking input validation
-(define-public (test-stake-yes-fuzz (event-id uint) (amount uint))
+;; Property/Helper: Join campaign
+(define-public (test-join-campaign-fuzz (campaign-id uint) (referrer (optional principal)))
   (begin
-    (unwrap! (stake-yes event-id amount) (ok false))
+    (unwrap! (join-campaign campaign-id referrer) (ok false))
     (ok true)
   )
 )
 
-;; Property: NO staking input validation
-(define-public (test-stake-no-fuzz (event-id uint) (amount uint))
+;; Property: Match creation
+(define-public (test-create-match-fuzz (campaign-id uint) (metadata (string-ascii 200)))
   (begin
-    (unwrap! (stake-no event-id amount) (ok false))
+    (unwrap! (create-match campaign-id metadata) (ok false))
     (ok true)
   )
 )
 
-;; Property: Event resolution input validation (admin only - may fail)
-(define-public (test-resolve-event-fuzz (event-id uint) (winner bool))
+;; Property: Staking
+(define-public (test-stake-fuzz (event-id uint) (amount uint) (is-yes bool))
   (begin
-    (unwrap! (resolve-event event-id winner) (ok false))
+    (unwrap! (stake event-id amount is-yes) (ok false))
     (ok true)
   )
 )
 
-;; Property: Claim rewards input validation
-(define-public (test-claim-fuzz (event-id uint))
+;; Property: Resolve match
+(define-public (test-resolve-match-fuzz (event-id uint) (winner-is-yes bool))
   (begin
-    (unwrap! (claim event-id) (ok false))
+    (unwrap! (resolve-match event-id winner-is-yes) (ok false))
     (ok true)
   )
 )
 
-;; Property: Create listing input validation
-(define-public (test-create-listing-fuzz (points uint) (price-stx uint))
+;; Property: Claim reward
+(define-public (test-claim-reward-fuzz (event-id uint))
   (begin
-    (unwrap! (create-listing points price-stx) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Buy listing input validation
-(define-public (test-buy-listing-fuzz (listing-id uint) (points-to-buy uint))
-  (begin
-    (unwrap! (buy-listing listing-id points-to-buy) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Cancel listing input validation
-(define-public (test-cancel-listing-fuzz (listing-id uint))
-  (begin
-    (unwrap! (cancel-listing listing-id) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Withdraw protocol fees input validation (admin only - may fail)
-(define-public (test-withdraw-protocol-fees-fuzz (amount uint))
-  (begin
-    (unwrap! (withdraw-protocol-fees amount) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Create guild input validation
-(define-public (test-create-guild-fuzz (guild-id uint) (name (string-ascii 50)))
-  (begin
-    (unwrap! (create-guild guild-id name) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Join guild input validation
-(define-public (test-join-guild-fuzz (guild-id uint))
-  (begin
-    (unwrap! (join-guild guild-id) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Leave guild input validation
-(define-public (test-leave-guild-fuzz (guild-id uint))
-  (begin
-    (unwrap! (leave-guild guild-id) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Deposit to guild input validation
-(define-public (test-deposit-to-guild-fuzz (guild-id uint) (amount uint))
-  (begin
-    (unwrap! (deposit-to-guild guild-id amount) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Withdraw from guild input validation
-(define-public (test-withdraw-from-guild-fuzz (guild-id uint) (amount uint))
-  (begin
-    (unwrap! (withdraw-from-guild guild-id amount) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Guild stake YES input validation
-(define-public (test-guild-stake-yes-fuzz (guild-id uint) (event-id uint) (amount uint))
-  (begin
-    (unwrap! (guild-stake-yes guild-id event-id amount) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Guild stake NO input validation
-(define-public (test-guild-stake-no-fuzz (guild-id uint) (event-id uint) (amount uint))
-  (begin
-    (unwrap! (guild-stake-no guild-id event-id amount) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Guild claim input validation
-(define-public (test-guild-claim-fuzz (guild-id uint) (event-id uint))
-  (begin
-    (unwrap! (guild-claim guild-id event-id) (ok false))
-    (ok true)
-  )
-)
-
-;; =============================================================================
-;; HELPER FUNCTIONS FOR STATE SETUP
-;; =============================================================================
-;; These helpers allow Rendezvous to set up state needed for property tests
-
-;; Helper: Register user (sets up user state for other tests)
-(define-public (test-register-helper (username (string-ascii 50)))
-  (let ((register-result (register username)))
-    (ok true)
-  )
-)
-
-;; Helper: Create event (admin only - may fail if not admin)
-(define-public (test-create-event-helper (event-id uint) (metadata (string-ascii 200)))
-  (let ((create-result (create-event event-id metadata)))
-    (ok true)
-  )
-)
-
-;; Helper: Create guild (sets up guild state for other tests)
-(define-public (test-create-guild-helper (guild-id uint) (name (string-ascii 50)))
-  (let ((create-result (create-guild guild-id name)))
-    (ok true)
-  )
-)
-
-;; Helper: Resolve event (admin only - may fail if not admin)
-(define-public (test-resolve-event-helper (event-id uint) (winner bool))
-  (let ((resolve-result (resolve-event event-id winner)))
+    (unwrap! (claim-reward event-id) (ok false))
     (ok true)
   )
 )
@@ -191,1531 +67,139 @@
 ;; PROPERTY TESTS WITH PRECONDITION CHECKING
 ;; =============================================================================
 
-;; Property: Staking YES should deduct points from user and add to event pool
-(define-public (test-stake-yes-property (event-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: user must be registered (have points)
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 3: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) amount)
-      ;; Precondition 4: event must exist and be open
-      (is-none (map-get? events event-id))
+;; Property: Username uniqueness
+(define-public (test-username-uniqueness-property (username (string-ascii 50)))
+  (if (or 
+      (is-eq username "")
+      (is-some (map-get? usernames username))
     )
-    ;; Discard if preconditions aren't met
     (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-yes-pool (get yes-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (stake-yes event-id amount) (ok false))
-          (let (
-              (final-points (default-to u0 (map-get? user-points tx-sender)))
-              (final-yes-pool (get yes-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: points deducted and pool increased
-            (asserts! (is-eq final-points (- initial-points amount))
-              (err u999)
-            )
-            (asserts! (is-eq final-yes-pool (+ initial-yes-pool amount))
-              (err u998)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; Property: Staking NO should deduct points from user and add to event pool
-(define-public (test-stake-no-property (event-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: user must be registered (have points)
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 3: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) amount)
-      ;; Precondition 4: event must exist and be open
-      (is-none (map-get? events event-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-no-pool (get no-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (stake-no event-id amount) (ok false))
-          (let (
-              (final-points (default-to u0 (map-get? user-points tx-sender)))
-              (final-no-pool (get no-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: points deducted and pool increased
-            (asserts! (is-eq final-points (- initial-points amount))
-              (err u999)
-            )
-            (asserts! (is-eq final-no-pool (+ initial-no-pool amount))
-              (err u998)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; Property: Claiming should increase user points when winning
-(define-public (test-claim-property (event-id uint))
-  (if (or
-      ;; Precondition 1: event must exist
-      (is-none (map-get? events event-id))
-      ;; Precondition 2: user must be registered
-      (is-none (map-get? user-points tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-      )
-      (if (is-eq (get status event) "resolved")
-        (match (get winner event)
-          winner
-          (begin
-            ;; Check if user has a stake in the winning side
-            (match (if winner
-                (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-                (map-get? no-stakes { event-id: event-id, user: tx-sender })
-              )
-              stake
-              (if (> stake u0)
-                (begin
-                  (unwrap! (claim event-id) (ok false))
-                  (let ((final-points (default-to u0 (map-get? user-points tx-sender))))
-                    ;; Verify property: points increased
-                    (asserts! (>= final-points initial-points)
-                      (err u997)
-                    )
-                    (ok true)
-                  )
-                )
-                (ok false) ;; No stake - discard
-              )
-              (ok false) ;; No stake found - discard
-            )
-          )
-          (ok false) ;; Winner not set - discard
-        )
-        (ok false) ;; Event not resolved - discard
-      )
-    )
-  )
-)
-
-;; Property: Creating listing should lock points and deduct from user
-(define-public (test-create-listing-property (points uint) (price-stx uint))
-  (if (or
-      ;; Precondition 1: points must be > 0
-      (is-eq points u0)
-      ;; Precondition 2: price must be > 0
-      (is-eq price-stx u0)
-      ;; Precondition 3: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 4: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) points)
-      ;; Precondition 5: user must have earned >= 10,000 points
-      (< (default-to u0 (map-get? earned-points tx-sender)) u10000)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((initial-points (default-to u0 (map-get? user-points tx-sender))))
-      (unwrap! (create-listing points price-stx) (ok false))
-      (let ((final-points (default-to u0 (map-get? user-points tx-sender))))
-        ;; Verify property: points deducted
-        (asserts! (is-eq final-points (- initial-points points))
-          (err u996)
-        )
-        (ok true)
-      )
-    )
-  )
-)
-
-;; Property: Buying listing should transfer points to buyer
-(define-public (test-buy-listing-property (listing-id uint) (points-to-buy uint))
-  (if (or
-      ;; Precondition 1: points-to-buy must be > 0
-      (is-eq points-to-buy u0)
-      ;; Precondition 2: listing must exist
-      (is-none (map-get? listings listing-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (listing (unwrap! (map-get? listings listing-id) (ok false)))
-        (initial-buyer-points (default-to u0 (map-get? user-points tx-sender)))
-      )
-      (if (and
-          (get active listing)
-          (>= (get points listing) points-to-buy)
-        )
-        (begin
-          (unwrap! (buy-listing listing-id points-to-buy) (ok false))
-          (let ((final-buyer-points (default-to u0 (map-get? user-points tx-sender))))
-            ;; Verify property: buyer received points
-            (asserts! (is-eq final-buyer-points (+ initial-buyer-points points-to-buy))
-              (err u995)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Listing not active or insufficient points - discard
-      )
-    )
-  )
-)
-
-;; Property: Canceling listing should return points to seller
-(define-public (test-cancel-listing-property (listing-id uint))
-  (if (or
-      ;; Precondition 1: listing must exist
-      (is-none (map-get? listings listing-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (listing (unwrap! (map-get? listings listing-id) (ok false)))
-        (initial-seller-points (default-to u0 (map-get? user-points (get seller listing))))
-        (listing-points (get points listing))
-      )
-      (if (and
-          (get active listing)
-          (is-eq tx-sender (get seller listing))
-        )
-        (begin
-          (unwrap! (cancel-listing listing-id) (ok false))
-          (let ((final-seller-points (default-to u0 (map-get? user-points (get seller listing)))))
-            ;; Verify property: seller got points back
-            (asserts! (is-eq final-seller-points (+ initial-seller-points listing-points))
-              (err u994)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Listing not active or not seller - discard
-      )
-    )
-  )
-)
-
-;; Property: Joining guild should add user as member
-(define-public (test-join-guild-property (guild-id uint))
-  (if (or
-      ;; Precondition 1: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 2: user must not already be a member
-      (is-some (is-guild-member guild-id tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
     (begin
-      (unwrap! (join-guild guild-id) (ok false))
-      ;; Verify property: user is now a member
-      (match (is-guild-member guild-id tx-sender)
-        member-status
-        (if member-status
-          (ok true)
-          (ok false) ;; Member status is false
-        )
-        (ok false) ;; Should not be none
-      )
-    )
-  )
-)
-
-;; Property: Depositing to guild should transfer points from user to guild
-(define-public (test-deposit-to-guild-property (guild-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 3: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-      ;; Precondition 4: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 5: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) amount)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (guild (unwrap! (map-get? guilds guild-id) (ok false)))
-        (initial-user-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-guild-points (get total-points guild))
-      )
-      (unwrap! (deposit-to-guild guild-id amount) (ok false))
-      (let (
-          (final-user-points (default-to u0 (map-get? user-points tx-sender)))
-          (final-guild-points (get total-points (unwrap! (map-get? guilds guild-id) (ok false))))
-        )
-        ;; Verify property: points transferred
-        (asserts! (is-eq final-user-points (- initial-user-points amount))
-          (err u991)
-        )
-        (asserts! (is-eq final-guild-points (+ initial-guild-points amount))
-          (err u990)
-        )
+      (unwrap! (set-username username) (ok false))
+      (let ((profile (unwrap! (map-get? user-profiles tx-sender) (ok false))))
+        (asserts! (is-eq (get username profile) username) (err u901))
+        (asserts! (is-eq (map-get? usernames username) (some tx-sender)) (err u902))
         (ok true)
       )
     )
   )
 )
 
-;; Property: Withdrawing from guild should transfer points from guild to user
-(define-public (test-withdraw-from-guild-property (guild-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 3: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-      ;; Precondition 4: user must have deposits
-      (is-none (map-get? guild-deposits { guild-id: guild-id, user: tx-sender }))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (guild (unwrap! (map-get? guilds guild-id) (ok false)))
-        (user-deposit (unwrap! (map-get? guild-deposits { guild-id: guild-id, user: tx-sender }) (ok false)))
-        (initial-guild-points (get total-points guild))
-        (initial-user-points (default-to u0 (map-get? user-points tx-sender)))
+;; Property: Staking increases pools
+(define-public (test-staking-pool-property (event-id uint) (amount uint) (is-yes bool))
+  (let ((event-opt (map-get? events event-id)))
+    (if (or 
+        (is-none event-opt)
+        (is-eq amount u0)
       )
-      (if (and
-          (>= user-deposit amount)
-          (>= initial-guild-points amount)
-        )
-        (begin
-          (unwrap! (withdraw-from-guild guild-id amount) (ok false))
-          (let (
-              (final-guild-points (get total-points (unwrap! (map-get? guilds guild-id) (ok false))))
-              (final-user-points (default-to u0 (map-get? user-points tx-sender)))
-            )
-            ;; Verify property: points transferred
-            (asserts! (is-eq final-user-points (+ initial-user-points amount))
-              (err u989)
-            )
-            (asserts! (is-eq final-guild-points (- initial-guild-points amount))
-              (err u988)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Insufficient deposits or guild points - discard
-      )
-    )
-  )
-)
-
-;; Property: Guild staking YES should deduct from guild pool and add to event pool
-(define-public (test-guild-stake-yes-property (guild-id uint) (event-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 3: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-      ;; Precondition 4: guild must have enough points
-      (< (get total-points (unwrap! (map-get? guilds guild-id) (ok false))) amount)
-      ;; Precondition 5: event must exist and be open
-      (is-none (map-get? events event-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (guild (unwrap! (map-get? guilds guild-id) (ok false)))
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-guild-points (get total-points guild))
-        (initial-yes-pool (get yes-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (guild-stake-yes guild-id event-id amount) (ok false))
-          (let (
-              (final-guild-points (get total-points (unwrap! (map-get? guilds guild-id) (ok false))))
-              (final-yes-pool (get yes-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: guild points deducted and event pool increased
-            (asserts! (is-eq final-guild-points (- initial-guild-points amount))
-              (err u987)
-            )
-            (asserts! (is-eq final-yes-pool (+ initial-yes-pool amount))
-              (err u986)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; Property: Guild staking NO should deduct from guild pool and add to event pool
-(define-public (test-guild-stake-no-property (guild-id uint) (event-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 3: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-      ;; Precondition 4: guild must have enough points
-      (< (get total-points (unwrap! (map-get? guilds guild-id) (ok false))) amount)
-      ;; Precondition 5: event must exist and be open
-      (is-none (map-get? events event-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (guild (unwrap! (map-get? guilds guild-id) (ok false)))
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-guild-points (get total-points guild))
-        (initial-no-pool (get no-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (guild-stake-no guild-id event-id amount) (ok false))
-          (let (
-              (final-guild-points (get total-points (unwrap! (map-get? guilds guild-id) (ok false))))
-              (final-no-pool (get no-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: guild points deducted and event pool increased
-            (asserts! (is-eq final-guild-points (- initial-guild-points amount))
-              (err u985)
-            )
-            (asserts! (is-eq final-no-pool (+ initial-no-pool amount))
-              (err u984)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; Property: Guild claiming should increase guild points when winning
-(define-public (test-guild-claim-property (guild-id uint) (event-id uint))
-  (if (or
-      ;; Precondition 1: event must exist
-      (is-none (map-get? events event-id))
-      ;; Precondition 2: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 3: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (guild (unwrap! (map-get? guilds guild-id) (ok false)))
-        (initial-guild-points (get total-points guild))
-      )
-      (if (is-eq (get status event) "resolved")
-        (match (get winner event)
-          winner
-          (begin
-            ;; Check if guild has a stake in the winning side
-            (match (if winner
-                (map-get? guild-yes-stakes { guild-id: guild-id, event-id: event-id })
-                (map-get? guild-no-stakes { guild-id: guild-id, event-id: event-id })
+      (ok false)
+      (let ((event (unwrap-panic event-opt)))
+        (if (not (is-eq (get status event) "open"))
+          (ok false)
+          (let ((initial-yes (get yes-pool event)) (initial-no (get no-pool event)))
+            (unwrap! (stake event-id amount is-yes) (ok false))
+            (let ((final-event (unwrap! (map-get? events event-id) (ok false))))
+              (if is-yes
+                (asserts! (is-eq (get yes-pool final-event) (+ initial-yes amount)) (err u920))
+                (asserts! (is-eq (get no-pool final-event) (+ initial-no amount)) (err u921))
               )
-              stake
-              (if (> stake u0)
-                (begin
-                  (unwrap! (guild-claim guild-id event-id) (ok false))
-                  (let ((final-guild-points (get total-points (unwrap! (map-get? guilds guild-id) (ok false)))))
-                    ;; Verify property: guild points increased
-                    (asserts! (>= final-guild-points initial-guild-points)
-                      (err u983)
-                    )
-                    (ok true)
-                  )
-                )
-                (ok false) ;; No stake - discard
-              )
-              (ok false) ;; No stake found - discard
-            )
-          )
-          (ok false) ;; Winner not set - discard
-        )
-        (ok false) ;; Event not resolved - discard
-      )
-    )
-  )
-)
-
-;; Property: Leaving guild should remove user as member (only if no deposits)
-(define-public (test-leave-guild-property (guild-id uint))
-  (if (or
-      ;; Precondition 1: guild must exist
-      (is-none (map-get? guilds guild-id))
-      ;; Precondition 2: user must be a member
-      (is-none (is-guild-member guild-id tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((user-deposit (default-to u0 (map-get? guild-deposits { guild-id: guild-id, user: tx-sender }))))
-      ;; Can only leave if deposits are 0
-      (if (is-eq user-deposit u0)
-        (begin
-          (unwrap! (leave-guild guild-id) (ok false))
-          ;; Verify property: user is no longer a member
-          (match (is-guild-member guild-id tx-sender)
-            member-status
-            (if member-status
-              (ok false) ;; Still a member - test failed
-              (ok true)  ;; Not a member - success
-            )
-            (ok true) ;; Not a member (none) - success
-          )
-        )
-        (ok false) ;; Has deposits - discard (must withdraw first)
-      )
-    )
-  )
-)
-
-;; =============================================================================
-;; EDGE CASE TESTS
-;; =============================================================================
-
-;; Edge Case: Claiming when losing should clear stake but return 0 reward
-(define-public (test-claim-losing-property (event-id uint))
-  (if (or
-      ;; Precondition 1: event must exist
-      (is-none (map-get? events event-id))
-      ;; Precondition 2: user must be registered
-      (is-none (map-get? user-points tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-      )
-      (if (is-eq (get status event) "resolved")
-        (match (get winner event)
-          winner
-          (begin
-            ;; Check if user has a stake in the LOSING side
-            (match (if winner
-                (map-get? no-stakes { event-id: event-id, user: tx-sender })
-                (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-              )
-              stake
-              (if (> stake u0)
-                (begin
-                  (unwrap! (claim event-id) (ok false))
-                  (let ((final-points (default-to u0 (map-get? user-points tx-sender))))
-                    ;; Verify property: points unchanged (no reward for losing)
-                    (asserts! (is-eq final-points initial-points)
-                      (err u982)
-                    )
-                    ;; Verify stake was cleared
-                    (match (if winner
-                        (map-get? no-stakes { event-id: event-id, user: tx-sender })
-                        (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-                      )
-                      remaining-stake
-                      (begin
-                        (asserts! (is-eq remaining-stake u0) (err u981))
-                        (ok true)
-                      )
-                      (ok true) ;; Stake cleared (none)
-                    )
-                  )
-                )
-                (ok false) ;; No losing stake - discard
-              )
-              (ok false) ;; No stake found - discard
-            )
-          )
-          (ok false) ;; Winner not set - discard
-        )
-        (ok false) ;; Event not resolved - discard
-      )
-    )
-  )
-)
-
-;; Edge Case: Partial purchase of listing should update listing correctly
-(define-public (test-buy-listing-partial-property (listing-id uint) (points-to-buy uint))
-  (if (or
-      ;; Precondition 1: points-to-buy must be > 0
-      (is-eq points-to-buy u0)
-      ;; Precondition 2: listing must exist
-      (is-none (map-get? listings listing-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (listing (unwrap! (map-get? listings listing-id) (ok false)))
-        (initial-listing-points (get points listing))
-        (initial-listing-price (get price-stx listing))
-      )
-      (if (and
-          (get active listing)
-          (> initial-listing-points points-to-buy) ;; Must be partial purchase
-          (>= initial-listing-points points-to-buy)
-        )
-        (begin
-          (unwrap! (buy-listing listing-id points-to-buy) (ok false))
-          (let ((updated-listing (unwrap! (map-get? listings listing-id) (ok false))))
-            ;; Verify property: listing still active with reduced points
-            (asserts! (get active updated-listing)
-              (err u980)
-            )
-            (asserts! (is-eq (get points updated-listing) (- initial-listing-points points-to-buy))
-              (err u979)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Not a partial purchase or invalid - discard
-      )
-    )
-  )
-)
-
-;; Edge Case: Multiple stakes on same event should accumulate
-(define-public (test-stake-yes-accumulate-property (event-id uint) (amount1 uint) (amount2 uint))
-  (if (or
-      ;; Precondition 1: amounts must be > 0
-      (is-eq amount1 u0)
-      (is-eq amount2 u0)
-      ;; Precondition 2: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 3: user must have enough points for both stakes
-      (< (default-to u0 (map-get? user-points tx-sender)) (+ amount1 amount2))
-      ;; Precondition 4: event must exist and be open
-      (is-none (map-get? events event-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-yes-pool (get yes-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          ;; First stake
-          (unwrap! (stake-yes event-id amount1) (ok false))
-          ;; Second stake
-          (unwrap! (stake-yes event-id amount2) (ok false))
-          (let (
-              (final-points (default-to u0 (map-get? user-points tx-sender)))
-              (final-yes-pool (get yes-pool (unwrap! (map-get? events event-id) (ok false))))
-              (total-stake (unwrap! (map-get? yes-stakes { event-id: event-id, user: tx-sender }) (ok false)))
-            )
-            ;; Verify property: points deducted correctly, pool increased, stake accumulated
-            (asserts! (is-eq final-points (- initial-points (+ amount1 amount2)))
-              (err u978)
-            )
-            (asserts! (is-eq final-yes-pool (+ initial-yes-pool (+ amount1 amount2)))
-              (err u977)
-            )
-            (asserts! (is-eq total-stake (+ amount1 amount2))
-              (err u976)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; =============================================================================
-;; ENHANCED COVERAGE TESTS
-;; =============================================================================
-
-;; Enhanced: Create listing should add listing fee to treasury (10 STX)
-(define-public (test-create-listing-fee-property (points uint) (price-stx uint))
-  (if (or
-      ;; Precondition 1: points must be > 0
-      (is-eq points u0)
-      ;; Precondition 2: price must be > 0
-      (is-eq price-stx u0)
-      ;; Precondition 3: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 4: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) points)
-      ;; Precondition 5: user must have earned >= 10,000 points
-      (< (default-to u0 (map-get? earned-points tx-sender)) u10000)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((initial-treasury (var-get protocol-treasury)))
-      (unwrap! (create-listing points price-stx) (ok false))
-      (let ((final-treasury (var-get protocol-treasury)))
-        ;; Verify property: listing fee (10 STX = 10,000,000 micro-STX) added to treasury
-        (asserts! (is-eq final-treasury (+ initial-treasury u10000000))
-          (err u975)
-        )
-        (ok true)
-      )
-    )
-  )
-)
-
-;; Enhanced: Buy listing should calculate and add protocol fee to treasury (2%)
-(define-public (test-buy-listing-protocol-fee-property (listing-id uint) (points-to-buy uint))
-  (if (or
-      ;; Precondition 1: points-to-buy must be > 0
-      (is-eq points-to-buy u0)
-      ;; Precondition 2: listing must exist
-      (is-none (map-get? listings listing-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (listing (unwrap! (map-get? listings listing-id) (ok false)))
-        (initial-treasury (var-get protocol-treasury))
-      )
-      (if (and
-          (get active listing)
-          (>= (get points listing) points-to-buy)
-        )
-        (let (
-            (total-price (get price-stx listing))
-            (total-points (get points listing))
-            (price-per-point (/ total-price total-points))
-            (actual-price-stx (* price-per-point points-to-buy))
-            (expected-protocol-fee (/ (* actual-price-stx u200) u10000))
-          )
-          (unwrap! (buy-listing listing-id points-to-buy) (ok false))
-          (let ((final-treasury (var-get protocol-treasury)))
-            ;; Verify property: protocol fee (2%) added to treasury
-            (asserts! (is-eq final-treasury (+ initial-treasury expected-protocol-fee))
-              (err u973)
-            )
-            (ok true)
-          )
-        )
-        (ok false) ;; Listing not active or insufficient points - discard
-      )
-    )
-  )
-)
-
-;; Enhanced: Username uniqueness should be enforced
-(define-public (test-register-username-uniqueness-property (username (string-ascii 50)))
-  (if (or
-      ;; Precondition 1: username must not be empty (basic check)
-      (is-eq (len username) u0)
-      ;; Precondition 2: user must not already be registered
-      (is-some (map-get? user-points tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (begin
-      ;; First registration should succeed
-      (unwrap! (register username) (ok false))
-      ;; Verify username is stored and tracked for uniqueness
-      (match (get-username tx-sender)
-        stored-username
-        (begin
-          (asserts! (is-eq stored-username username) (err u971))
-          ;; Verify username is tracked in usernames map for uniqueness
-          (match (map-get? usernames username)
-            existing-user
-            (begin
-              (asserts! (is-eq existing-user tx-sender) (err u960))
               (ok true)
             )
-            (ok false) ;; Username not tracked
           )
         )
-        (ok false) ;; Username not stored
       )
     )
   )
 )
 
-;; Enhanced: Resolve event should transition state from open to resolved
-(define-public (test-resolve-event-property (event-id uint) (winner bool))
-  (if (or
-      ;; Precondition 1: event must exist
-      (is-none (map-get? events event-id))
-      ;; Precondition 2: caller must be admin (will discard if not)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((event (unwrap! (map-get? events event-id) (ok false))))
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (resolve-event event-id winner) (ok false))
-          (let ((resolved-event (unwrap! (map-get? events event-id) (ok false))))
-            ;; Verify property: status changed to resolved and winner set
-            (asserts! (is-eq (get status resolved-event) "resolved")
-              (err u970)
-            )
-            (match (get winner resolved-event)
-              winner-value
-              (begin
-                (asserts! (is-eq winner-value winner) (err u969))
-                (ok true)
-              )
-              (ok false) ;; Winner not set
-            )
-          )
-        )
-        (ok false) ;; Event not open - discard
+;; =============================================================================
+;; SYSTEM INVARIANTS
+;; =============================================================================
+
+;; @desc Error code for paused protocol
+(define-constant ERR-PAUSED u10)
+
+;; @desc Property: create-campaign should fail when paused
+(define-public (prop-pause-halting (paused bool))
+  (begin
+    (try! (set-paused paused))
+    (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender u100 u200)))
+      (if paused
+        (asserts! (is-eq res (err ERR-PAUSED)) (err u1001))
+        (asserts! (is-ok res) (err u1002))
       )
+      ;; Reset for next test
+      (try! (set-paused false))
+      (ok true)
     )
   )
 )
 
-;; Enhanced: Withdraw protocol fees should decrease treasury balance
-(define-public (test-withdraw-protocol-fees-property (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: caller must be admin (will discard if not)
-      ;; Precondition 3: treasury must have enough balance
-      (< (var-get protocol-treasury) amount)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((initial-treasury (var-get protocol-treasury)))
-      (unwrap! (withdraw-protocol-fees amount) (ok false))
-      (let ((final-treasury (var-get protocol-treasury)))
-        ;; Verify property: treasury decreased by withdrawal amount
-        (asserts! (is-eq final-treasury (- initial-treasury amount))
-          (err u968)
-        )
-        (ok true)
-      )
-    )
+;; @desc Property: 2-step admin handoff integrity
+(define-public (prop-admin-handoff (new-admin principal))
+  (begin
+    (asserts! (is-standard new-admin) (ok true)) ;; Skip non-standard for this
+    (try! (propose-admin new-admin))
+    ;; Check current admin is still tx-sender
+    (asserts! (is-eq (unwrap-panic (get-admin)) tx-sender) (err u1003))
+    ;; Reset for next test (since we can't easily claim in Rendezvous without changing tx-sender context)
+    (ok true)
   )
 )
 
-;; Enhanced: Claiming twice should fail after first claim (stake cleared)
-(define-public (test-claim-twice-property (event-id uint))
-  (if (or
-      ;; Precondition 1: event must exist
-      (is-none (map-get? events event-id))
-      ;; Precondition 2: user must be registered
-      (is-none (map-get? user-points tx-sender))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((event (unwrap! (map-get? events event-id) (ok false))))
-      (if (is-eq (get status event) "resolved")
-        (match (get winner event)
-          winner
-          (begin
-            ;; Check if user has a stake in the winning side
-            (match (if winner
-                (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-                (map-get? no-stakes { event-id: event-id, user: tx-sender })
-              )
-              stake
-              (if (> stake u0)
-                (begin
-                  ;; First claim should succeed
-                  (unwrap! (claim event-id) (ok false))
-                  ;; Verify stake was cleared (set to 0) - this proves second claim would fail
-                  (match (if winner
-                      (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-                      (map-get? no-stakes { event-id: event-id, user: tx-sender })
-                    )
-                    remaining-stake
-                    (begin
-                      ;; Stake should be 0 after claiming (proves second claim would fail)
-                      (asserts! (is-eq remaining-stake u0) (err u961))
-                      (ok true)
-                    )
-                    (ok true) ;; Stake cleared (none) - second claim would fail
-                  )
-                )
-                (ok false) ;; No stake - discard
-              )
-              (ok false) ;; No stake found - discard
-            )
-          )
-          (ok false) ;; Winner not set - discard
-        )
-        (ok false) ;; Event not resolved - discard
-      )
-    )
+;; @desc Invariant: Treasury must always be backed by contract balance
+(define-public (invariant-treasury-backing)
+  (let ((treasury (unwrap-panic (get-protocol-treasury))))
+    (asserts! (>= (stx-get-balance (as-contract tx-sender)) treasury) (err u901))
+    (ok true)
   )
 )
 
-;; Enhanced: Boundary condition - very large amounts
-(define-public (test-stake-yes-boundary-property (event-id uint) (amount uint))
-  (if (or
-      ;; Precondition 1: amount must be > 0
-      (is-eq amount u0)
-      ;; Precondition 2: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 3: user must have enough points
-      (< (default-to u0 (map-get? user-points tx-sender)) amount)
-      ;; Precondition 4: event must exist and be open
-      (is-none (map-get? events event-id))
+;; Invariant: User profile mapping consistency
+(define-public (test-invariant-profile-sync)
+  (match (map-get? user-profiles tx-sender)
+    profile (let ((username (get username profile)))
+      (asserts! (is-eq (map-get? usernames username) (some tx-sender)) (err u951))
+      (ok true)
     )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test - same as regular stake-yes but tests with boundary values
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-yes-pool (get yes-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (stake-yes event-id amount) (ok false))
-          (let (
-              (final-points (default-to u0 (map-get? user-points tx-sender)))
-              (final-yes-pool (get yes-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: points deducted and pool increased (even with large amounts)
-            (asserts! (is-eq final-points (- initial-points amount))
-              (err u966)
-            )
-            (asserts! (is-eq final-yes-pool (+ initial-yes-pool amount))
-              (err u965)
-            )
-            ;; Verify no overflow occurred (final should be >= initial for pool)
-            (asserts! (>= final-yes-pool initial-yes-pool)
-              (err u964)
-            )
+    (ok true)
+  )
+)
+
+;; =============================================================================
+;; EDGE CASE FUZZING
+;; =============================================================================
+
+;; Edge: Staking zero amount must fail
+(define-public (test-stake-zero-edge (event-id uint))
+  (let ((res (stake event-id u0 true)))
+    (asserts! (is-err res) (err u960))
+    (ok true)
+  )
+)
+
+;; Edge: Invalid campaign times must fail
+(define-public (test-campaign-invalid-times-edge (start-uint uint))
+  (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender start-uint start-uint)))
+    (asserts! (is-err res) (err u961))
+    (ok true)
+  )
+)
+
+;; Edge: Unauthorized status update must fail
+(define-public (test-unauthorized-campaign-status-edge (campaign-id uint) (new-status (string-ascii 20)))
+  (let ((campaign-opt (map-get? campaigns campaign-id)))
+    (if (is-none campaign-opt)
+      (ok false)
+      (let ((campaign (unwrap-panic campaign-opt)))
+        (if (is-eq tx-sender (get creator campaign))
+          (ok false) ;; Skip if we are the creator (valid case)
+          (let ((res (update-campaign-status campaign-id new-status)))
+            (asserts! (is-eq res (err u3)) (err u962)) ;; ERR-UNAUTHORIZED
             (ok true)
           )
         )
-        (ok false) ;; Event not open - discard
       )
     )
-  )
-)
-
-;; Enhanced: Boundary condition - minimum values (1 point)
-(define-public (test-stake-yes-minimum-property (event-id uint))
-  (if (or
-      ;; Precondition 1: user must be registered
-      (is-none (map-get? user-points tx-sender))
-      ;; Precondition 2: user must have at least 1 point
-      (< (default-to u0 (map-get? user-points tx-sender)) u1)
-      ;; Precondition 3: event must exist and be open
-      (is-none (map-get? events event-id))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test with minimum amount (1 point)
-    (let (
-        (event (unwrap! (map-get? events event-id) (ok false)))
-        (initial-points (default-to u0 (map-get? user-points tx-sender)))
-        (initial-yes-pool (get yes-pool event))
-      )
-      (if (is-eq (get status event) "open")
-        (begin
-          (unwrap! (stake-yes event-id u1) (ok false))
-          (let (
-              (final-points (default-to u0 (map-get? user-points tx-sender)))
-              (final-yes-pool (get yes-pool (unwrap! (map-get? events event-id) (ok false))))
-            )
-            ;; Verify property: minimum stake works correctly
-            (asserts! (is-eq final-points (- initial-points u1))
-              (err u963)
-            )
-            (asserts! (is-eq final-yes-pool (+ initial-yes-pool u1))
-              (err u962)
-            )
-  (ok true)
-)
-        )
-        (ok false) ;; Event not open - discard
-      )
-    )
-  )
-)
-
-;; =============================================================================
-;; ADMIN POINTS MINTING AND BUYING TESTS
-;; =============================================================================
-
-;; Property: Mint admin points input validation (admin only - may fail)
-(define-public (test-mint-admin-points-fuzz (points uint))
-  (begin
-    (unwrap! (mint-admin-points points) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Buy admin points input validation
-(define-public (test-buy-admin-points-fuzz (points-to-buy uint))
-  (begin
-    (unwrap! (buy-admin-points points-to-buy) (ok false))
-    (ok true)
-  )
-)
-
-;; Property: Mint admin points should increase admin's user-points but NOT earned-points
-(define-public (test-mint-admin-points-property (points uint))
-  (if (or
-      ;; Precondition 1: points must be > 0
-      (is-eq points u0)
-      ;; Precondition 2: caller must be admin
-      (not (is-eq tx-sender (var-get admin)))
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (admin-principal (var-get admin))
-        (initial-user-points (default-to u0 (map-get? user-points admin-principal)))
-        (initial-earned-points (default-to u0 (map-get? earned-points admin-principal)))
-        (initial-total-minted (var-get total-admin-minted-points))
-      )
-      (unwrap! (mint-admin-points points) (ok false))
-      (let (
-          (final-user-points (default-to u0 (map-get? user-points admin-principal)))
-          (final-earned-points (default-to u0 (map-get? earned-points admin-principal)))
-          (final-total-minted (var-get total-admin-minted-points))
-        )
-        ;; Verify property: user-points increased by minted amount
-        (asserts! (is-eq final-user-points (+ initial-user-points points))
-          (err u950)
-        )
-        ;; Verify property: earned-points NOT increased (shouldn't affect leaderboard)
-        (asserts! (is-eq final-earned-points initial-earned-points)
-          (err u949)
-        )
-        ;; Verify property: total-admin-minted-points increased
-        (asserts! (is-eq final-total-minted (+ initial-total-minted points))
-          (err u948)
-        )
-        (ok true)
-      )
-    )
-  )
-)
-
-;; Property: Buy admin points should transfer points from admin to buyer, NOT add to earned-points
-(define-public (test-buy-admin-points-property (points-to-buy uint))
-  (if (or
-      ;; Precondition 1: points-to-buy must be > 0
-      (is-eq points-to-buy u0)
-      ;; Precondition 2: admin must have enough points
-      (< (default-to u0 (map-get? user-points (var-get admin))) points-to-buy)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let (
-        (admin-principal (var-get admin))
-        (buyer tx-sender)
-        (initial-admin-points (default-to u0 (map-get? user-points admin-principal)))
-        (initial-buyer-points (default-to u0 (map-get? user-points buyer)))
-        (initial-buyer-earned (default-to u0 (map-get? earned-points buyer)))
-        (initial-treasury (var-get protocol-treasury))
-        (expected-price (* points-to-buy u1000)) ;; ADMIN_POINT_PRICE = 1000 micro-STX per point
-      )
-      (unwrap! (buy-admin-points points-to-buy) (ok false))
-      (let (
-          (final-admin-points (default-to u0 (map-get? user-points admin-principal)))
-          (final-buyer-points (default-to u0 (map-get? user-points buyer)))
-          (final-buyer-earned (default-to u0 (map-get? earned-points buyer)))
-          (final-treasury (var-get protocol-treasury))
-        )
-        ;; Verify property: admin points decreased
-        (asserts! (is-eq final-admin-points (- initial-admin-points points-to-buy))
-          (err u947)
-        )
-        ;; Verify property: buyer points increased
-        (asserts! (is-eq final-buyer-points (+ initial-buyer-points points-to-buy))
-          (err u946)
-        )
-        ;; Verify property: buyer earned-points NOT increased (shouldn't affect leaderboard)
-        (asserts! (is-eq final-buyer-earned initial-buyer-earned)
-          (err u945)
-        )
-        ;; Verify property: treasury increased by payment amount
-        (asserts! (is-eq final-treasury (+ initial-treasury expected-price))
-          (err u944)
-        )
-        (ok true)
-      )
-    )
-  )
-)
-
-;; Property: Bought points should NOT allow selling (earned-points unchanged)
-(define-public (test-buy-admin-points-no-sell-property (points-to-buy uint))
-  (if (or
-      ;; Precondition 1: points-to-buy must be > 0
-      (is-eq points-to-buy u0)
-      ;; Precondition 2: admin must have enough points
-      (< (default-to u0 (map-get? user-points (var-get admin))) points-to-buy)
-      ;; Precondition 3: buyer must NOT already have 10,000+ earned points
-      (>= (default-to u0 (map-get? earned-points tx-sender)) u10000)
-    )
-    ;; Discard if preconditions aren't met
-    (ok false)
-    ;; Run the test
-    (let ((initial-earned (default-to u0 (map-get? earned-points tx-sender))))
-      (unwrap! (buy-admin-points points-to-buy) (ok false))
-      (let ((final-earned (default-to u0 (map-get? earned-points tx-sender))))
-        ;; Verify property: earned-points unchanged after buying
-        (asserts! (is-eq final-earned initial-earned)
-          (err u943)
-        )
-        ;; Verify property: user still cannot sell (earned < 10,000)
-        (asserts! (< final-earned u10000)
-          (err u942)
-        )
-        (ok true)
-      )
-    )
-  )
-)
-
-;; =============================================================================
-;; INVARIANT TESTS
-;; =============================================================================
-;; These invariants should always hold true regardless of state transitions.
-;; Rendezvous will randomly execute public functions and check these invariants.
-
-;; Invariant: Protocol treasury should never be negative
-(define-read-only (invariant-treasury-non-negative)
-  (>= (var-get protocol-treasury) u0)
-)
-
-;; Invariant: Total YES stakes counter should be non-negative
-(define-read-only (invariant-total-yes-stakes-non-negative)
-  (>= (var-get total-yes-stakes) u0)
-)
-
-;; Invariant: Total NO stakes counter should be non-negative
-(define-read-only (invariant-total-no-stakes-non-negative)
-  (>= (var-get total-no-stakes) u0)
-)
-
-;; Invariant: Total guild YES stakes counter should be non-negative
-(define-read-only (invariant-total-guild-yes-stakes-non-negative)
-  (>= (var-get total-guild-yes-stakes) u0)
-)
-
-;; Invariant: Total guild NO stakes counter should be non-negative
-(define-read-only (invariant-total-guild-no-stakes-non-negative)
-  (>= (var-get total-guild-no-stakes) u0)
-)
-
-;; Invariant: Total admin minted points should be non-negative
-(define-read-only (invariant-total-admin-minted-points-non-negative)
-  (>= (var-get total-admin-minted-points) u0)
-)
-
-;; Invariant: Next event ID should be positive
-(define-read-only (invariant-next-event-id-positive)
-  (> (var-get next-event-id) u0)
-)
-
-;; Invariant: Next listing ID should be positive
-(define-read-only (invariant-next-listing-id-positive)
-  (> (var-get next-listing-id) u0)
-)
-
-;; Invariant: Next guild ID should be positive
-(define-read-only (invariant-next-guild-id-positive)
-  (> (var-get next-guild-id) u0)
-)
-
-;; Invariant: Admin should always be set
-;; This ensures the admin variable is properly initialized
-(define-read-only (invariant-admin-exists)
-  true ;; Admin is always set via define-data-var, so this always holds
-)
-
-;; Invariant: If a user is registered, their points should be non-negative
-;; This checks the current transaction sender's points if they're registered
-(define-read-only (invariant-user-points-non-negative)
-  (match (map-get? user-points tx-sender)
-    points
-    (>= points u0)
-    true ;; If user not registered, invariant holds (nothing to check)
-  )
-)
-
-;; Invariant: If a user is registered, their earned points should be non-negative
-(define-read-only (invariant-earned-points-non-negative)
-  (match (map-get? earned-points tx-sender)
-    earned
-    (>= earned u0)
-    true ;; If user not registered, invariant holds
-  )
-)
-
-;; Invariant: Username consistency - if user has username, it should map correctly
-(define-read-only (invariant-username-consistency)
-  (match (map-get? user-names tx-sender)
-    username
-    (match (map-get? usernames username)
-      mapped-user
-      (is-eq mapped-user tx-sender) ;; Username should map back to this user
-      false ;; Username exists but not in usernames map - inconsistency
-    )
-    true ;; No username set - invariant holds
-  )
-)
-
-;; Invariant: If user has username, it should be unique (reverse mapping exists)
-(define-read-only (invariant-username-uniqueness)
-  (match (map-get? user-names tx-sender)
-    username
-    (is-some (map-get? usernames username)) ;; Username should exist in uniqueness map
-    true ;; No username - invariant holds
-  )
-)
-
-;; Invariant: Event status should be valid (open, closed, or resolved)
-;; This checks a specific event if it exists - we'll check event ID 1 as a sample
-(define-read-only (invariant-event-status-valid (event-id uint))
-  (match (map-get? events event-id)
-    event
-    (let ((status (get status event)))
-      (or
-        (is-eq status "open")
-        (is-eq status "closed")
-        (is-eq status "resolved")
-      )
-    )
-    true ;; Event doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Resolved events must have a winner set
-(define-read-only (invariant-resolved-events-have-winner (event-id uint))
-  (match (map-get? events event-id)
-    event
-    (if (is-eq (get status event) "resolved")
-      (is-some (get winner event)) ;; Resolved events must have winner
-      true ;; Not resolved - invariant holds
-    )
-    true ;; Event doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Event pools should be non-negative
-(define-read-only (invariant-event-pools-non-negative (event-id uint))
-  (match (map-get? events event-id)
-    event
-    (and
-      (>= (get yes-pool event) u0)
-      (>= (get no-pool event) u0)
-    )
-    true ;; Event doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: User stakes should be non-negative
-(define-read-only (invariant-user-stakes-non-negative (event-id uint))
-  (and
-    (match (map-get? yes-stakes { event-id: event-id, user: tx-sender })
-      stake
-      (>= stake u0)
-      true ;; No stake - invariant holds
-    )
-    (match (map-get? no-stakes { event-id: event-id, user: tx-sender })
-      stake
-      (>= stake u0)
-      true ;; No stake - invariant holds
-    )
-  )
-)
-
-;; Invariant: Guild total points should be non-negative
-(define-read-only (invariant-guild-points-non-negative (guild-id uint))
-  (match (map-get? guilds guild-id)
-    guild
-    (>= (get total-points guild) u0)
-    true ;; Guild doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Guild member count should be positive if guild exists
-(define-read-only (invariant-guild-member-count-positive (guild-id uint))
-  (match (map-get? guilds guild-id)
-    guild
-    (> (get member-count guild) u0) ;; Guilds must have at least 1 member
-    true ;; Guild doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Guild deposits should be non-negative
-(define-read-only (invariant-guild-deposits-non-negative (guild-id uint))
-  (match (map-get? guild-deposits { guild-id: guild-id, user: tx-sender })
-    deposit
-    (>= deposit u0)
-    true ;; No deposit - invariant holds
-  )
-)
-
-;; Invariant: Guild stakes should be non-negative
-(define-read-only (invariant-guild-stakes-non-negative (guild-id uint) (event-id uint))
-  (and
-    (match (map-get? guild-yes-stakes { guild-id: guild-id, event-id: event-id })
-      stake
-      (>= stake u0)
-      true ;; No stake - invariant holds
-    )
-    (match (map-get? guild-no-stakes { guild-id: guild-id, event-id: event-id })
-      stake
-      (>= stake u0)
-      true ;; No stake - invariant holds
-    )
-  )
-)
-
-;; Invariant: Listing points should be non-negative
-(define-read-only (invariant-listing-points-non-negative (listing-id uint))
-  (match (map-get? listings listing-id)
-    listing
-    (>= (get points listing) u0)
-    true ;; Listing doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Listing price should be non-negative
-(define-read-only (invariant-listing-price-non-negative (listing-id uint))
-  (match (map-get? listings listing-id)
-    listing
-    (>= (get price-stx listing) u0)
-    true ;; Listing doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: If user is a guild member, they should have a deposit record
-(define-read-only (invariant-guild-member-has-deposit (guild-id uint))
-  (match (is-guild-member guild-id tx-sender)
-    is-member
-    (if is-member
-      (is-some (map-get? guild-deposits { guild-id: guild-id, user: tx-sender })) ;; Member should have deposit record
-      true ;; Not a member - invariant holds
-    )
-    true ;; Not a member (none) - invariant holds
-  )
-)
-
-;; Invariant: Points conservation - user points + earned points should be consistent
-;; (earned points should never exceed total points for registered users)
-;; Note: This is a simplified check - full conservation would require summing all state
-(define-read-only (invariant-points-consistency)
-  (match (map-get? user-points tx-sender)
-    user-pts
-    (match (map-get? earned-points tx-sender)
-      earned-pts
-      (>= user-pts u0) ;; User points should be non-negative
-      (>= user-pts u0) ;; If no earned points, user points should still be non-negative
-    )
-    true ;; User not registered - invariant holds
-  )
-)
-
-;; Invariant: Using context - track that stake operations maintain pool consistency
-;; This uses the Rendezvous context to ensure stake operations are balanced
-(define-read-only (invariant-stake-operations-balanced)
-  (let
-    (
-      (stake-yes-calls (match (map-get? context "stake-yes")
-        ctx-entry (get called ctx-entry)
-        u0
-      ))
-      (stake-no-calls (match (map-get? context "stake-no")
-        ctx-entry (get called ctx-entry)
-        u0
-      ))
-      (claim-calls (match (map-get? context "claim")
-        ctx-entry (get called ctx-entry)
-        u0
-      ))
-    )
-    ;; Basic sanity: if we've had stake operations, totals should be non-negative
-    ;; This invariant ensures that stake operations don't corrupt the global counters
-    (and
-      (>= (var-get total-yes-stakes) u0)
-      (>= (var-get total-no-stakes) u0)
-    )
-  )
-)
-
-;; Invariant: Event pool consistency - pools should match sum of stakes
-;; Note: This is a simplified version checking that pools are at least as large as tracked stakes
-;; Full verification would require iterating all stakes, which isn't practical in Clarity
-(define-read-only (invariant-event-pool-consistency (event-id uint))
-  (match (map-get? events event-id)
-    event
-    (let
-      (
-        (yes-pool (get yes-pool event))
-        (no-pool (get no-pool event))
-      )
-      ;; Pools should be non-negative and pools should be >= 0
-      ;; (Full consistency would require summing all individual stakes)
-      (and
-        (>= yes-pool u0)
-        (>= no-pool u0)
-      )
-    )
-    true ;; Event doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Guild points should match sum of deposits
-;; Simplified check - verifies guild points are non-negative
-;; Full verification would require iterating all member deposits
-(define-read-only (invariant-guild-points-consistency (guild-id uint))
-  (match (map-get? guilds guild-id)
-    guild
-    (let
-      (
-        (total-pts (get total-points guild))
-      )
-      ;; Guild points should be non-negative
-      ;; (Full consistency would require summing all member deposits)
-      (>= total-pts u0)
-    )
-    true ;; Guild doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Active listings should have positive points
-(define-read-only (invariant-active-listing-has-points (listing-id uint))
-  (match (map-get? listings listing-id)
-    listing
-    (if (get active listing)
-      (> (get points listing) u0) ;; Active listings must have points
-      true ;; Not active - invariant holds
-    )
-    true ;; Listing doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: Active listings should have positive price
-(define-read-only (invariant-active-listing-has-price (listing-id uint))
-  (match (map-get? listings listing-id)
-    listing
-    (if (get active listing)
-      (> (get price-stx listing) u0) ;; Active listings must have price
-      true ;; Not active - invariant holds
-    )
-    true ;; Listing doesn't exist - invariant holds
-  )
-)
-
-;; Invariant: User stats should have consistent win rate calculation
-;; Win rate should be between 0 and 10000 (0% to 100%)
-(define-read-only (invariant-user-stats-win-rate-valid)
-  (match (map-get? user-stats tx-sender)
-    stats
-    (let
-      (
-        (win-rate (get win-rate stats))
-      )
-      (and
-        (>= win-rate u0)
-        (<= win-rate u10000) ;; Win rate as percentage (0-10000 = 0%-100%)
-      )
-    )
-    true ;; No stats - invariant holds
-  )
-)
-
-;; Invariant: User stats wins + losses should not exceed total predictions
-(define-read-only (invariant-user-stats-consistency)
-  (match (map-get? user-stats tx-sender)
-    stats
-    (let
-      (
-        (total (get total-predictions stats))
-        (wins (get wins stats))
-        (losses (get losses stats))
-      )
-      (>= total (+ wins losses)) ;; Total should be at least wins + losses
-    )
-    true ;; No stats - invariant holds
-  )
-)
-
-;; Invariant: Guild stats should have consistent win rate calculation
-(define-read-only (invariant-guild-stats-win-rate-valid (guild-id uint))
-  (match (map-get? guild-stats guild-id)
-    stats
-    (let
-      (
-        (win-rate (get win-rate stats))
-      )
-      (and
-        (>= win-rate u0)
-        (<= win-rate u10000) ;; Win rate as percentage (0-10000 = 0%-100%)
-      )
-    )
-    true ;; No stats - invariant holds
-  )
-)
-
-;; Invariant: Guild stats wins + losses should not exceed total predictions
-(define-read-only (invariant-guild-stats-consistency (guild-id uint))
-  (match (map-get? guild-stats guild-id)
-    stats
-    (let
-      (
-        (total (get total-predictions stats))
-        (wins (get wins stats))
-        (losses (get losses stats))
-      )
-      (>= total (+ wins losses)) ;; Total should be at least wins + losses
-    )
-    true ;; No stats - invariant holds
   )
 )
