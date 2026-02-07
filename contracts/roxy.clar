@@ -13,17 +13,14 @@
 ;; CONSTANTS & ERRORS
 ;; ============================================================================
 
-(define-constant BPS_DENOMINATOR u10000)
 (define-constant ERR-NOT-ADMIN (err u1))
 (define-constant ERR-NOT-FOUND (err u2))
 (define-constant ERR-UNAUTHORIZED (err u3))
 (define-constant ERR-INVALID-AMOUNT (err u4))
-(define-constant ERR-CAMPAIGN-EXPIRED (err u5))
 (define-constant ERR-INSUFFICIENT-FUNDS (err u6))
 (define-constant ERR-ALREADY-PARTICIPATED (err u7))
 (define-constant ERR-EVENT-NOT-OPEN (err u8))
 (define-constant ERR-EVENT-CLOSED (err u9))
-(define-constant ERR-REFERRAL-SELF (err u10))
 (define-constant ERR-INVALID-TIME (err u11))
 (define-constant ERR-INVALID-METADATA (err u12))
 (define-constant ERR-USERNAME-TAKEN (err u13))
@@ -410,7 +407,8 @@
             }
               u0
             )
-            (as-contract (stx-transfer? reward tx-sender recipient))
+            (try! (as-contract (stx-transfer? reward tx-sender recipient)))
+            (ok reward)
           )
         )
         (let (
@@ -430,7 +428,8 @@
             }
               u0
             )
-            (as-contract (stx-transfer? reward tx-sender recipient))
+            (try! (as-contract (stx-transfer? reward tx-sender recipient)))
+            (ok reward)
           )
         )
       )
@@ -447,7 +446,8 @@
     (asserts! (is-eq tx-sender (var-get admin)) ERR-NOT-ADMIN)
     (asserts! (<= amount (var-get protocol-treasury)) ERR-INSUFFICIENT-FUNDS)
     (var-set protocol-treasury (- (var-get protocol-treasury) amount))
-    (as-contract (stx-transfer? amount tx-sender (var-get admin)))
+    (try! (as-contract (stx-transfer? amount tx-sender (var-get admin))))
+    (ok amount)
   )
 )
 
