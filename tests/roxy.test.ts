@@ -691,7 +691,7 @@ describe("Roxy Contract Tests", () => {
       );
       expect(result).toBeErr(Cl.uint(8)); // ERR-EVENT-NOT-FOUND
     });
-
+ 
     it("should fail if event not resolved", () => {
       simnet.callPublicFn(contractName, "stake-yes", [Cl.uint(1), Cl.uint(100)], address1);
       const { result } = simnet.callPublicFn(
