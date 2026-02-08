@@ -122,8 +122,8 @@
 ;; SYSTEM INVARIANTS
 ;; =============================================================================
 
-;; @desc Error code for paused protocol
-(define-constant ERR-PAUSED u10)
+;; @desc Error code for paused protocol (fuzz internal)
+(define-constant FUZZ-ERR-PAUSED u10)
 
 ;; @desc Property: create-campaign should fail when paused
 (define-public (prop-pause-halting (paused bool))
@@ -131,7 +131,7 @@
     (try! (set-paused paused))
     (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender u100 u200 u0)))
       (if paused
-        (asserts! (is-eq res (err ERR-PAUSED)) (err u1001))
+        (asserts! (is-eq res (err FUZZ-ERR-PAUSED)) (err u1001))
         (asserts! (is-ok res) (err u1002))
       )
       ;; Reset for next test
