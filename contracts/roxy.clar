@@ -1,5 +1,5 @@
 ;; title: roxy
-;; version: 2.2.0
+;; version: 2.3.0
 ;; summary: STX-Based Gaming Prediction SDK (Modernized)
 ;; description: A platform for game developers to create campaigns, manage predictions, and track leaderboards with governance and indexability.
 
@@ -99,7 +99,7 @@
     no-pool: uint,
     status: (string-ascii 20),
     winner: (optional bool),
-    metadata: (string-ascii 200),
+    metadata-hash: (buff 32),
   }
 )
 
@@ -168,6 +168,27 @@
 
     (var-set next-campaign-id (+ campaign-id u1))
     (ok campaign-id)
+  )
+)
+
+;; @desc Updates the campaign metadata hash. Only the creator can call this.
+;; @param campaign-id: ID of the campaign
+;; @param new-metadata-hash: new 32-byte hash
+(define-public (set-campaign-metadata
+    (campaign-id uint)
+    (new-metadata-hash (buff 32))
+  )
+  (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
+    (asserts! (is-eq tx-sender (get creator campaign)) ERR-UNAUTHORIZED)
+    (asserts! (> (len new-metadata-hash) u0) ERR-INVALID-METADATA)
+    (print {
+      action: "set-campaign-metadata",
+      campaign-id: campaign-id,
+      metadata-hash: new-metadata-hash,
+    })
+    (ok (map-set campaigns campaign-id
+      (merge campaign { metadata-hash: new-metadata-hash })
+    ))
   )
 )
 
@@ -333,10 +354,10 @@
 
 ;; @desc Creates a new match within a campaign.
 ;; @param campaign-id: ID of the parent campaign
-;; @param metadata: Descriptive text for the match event
+;; @param metadata-hash: 32-byte hash of match data
 (define-public (create-match
     (campaign-id uint)
-    (metadata (string-ascii 200))
+    (metadata-hash (buff 32))
   )
   (let ((event-id (var-get next-event-id)))
     (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
@@ -347,7 +368,7 @@
           (or (is-eq tx-sender (get creator campaign)) (is-eq tx-sender (get reporter campaign)))
           ERR-UNAUTHORIZED
         )
-        (asserts! (> (len metadata) u0) ERR-INVALID-METADATA)
+        (asserts! (> (len metadata-hash) u0) ERR-INVALID-METADATA)
 
         ;; Pay creation fee to protocol treasury
         (try! (stx-transfer? fee tx-sender (as-contract tx-sender)))
@@ -357,7 +378,7 @@
           action: "create-match",
           event-id: event-id,
           campaign-id: campaign-id,
-          metadata: metadata,
+          metadata-hash: metadata-hash,
           fee: fee,
         })
 
@@ -367,7 +388,7 @@
           no-pool: u0,
           status: "open",
           winner: none,
-          metadata: metadata,
+          metadata-hash: metadata-hash,
         })
 
         (var-set next-event-id (+ event-id u1))
