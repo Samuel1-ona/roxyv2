@@ -16,9 +16,15 @@
 )
 
 ;; Property: Campaign creation input validation
-(define-public (test-create-campaign-fuzz (metadata-hash (buff 32)) (reporter principal) (start-time uint) (end-time uint))
+(define-public (test-create-campaign-fuzz
+    (metadata-hash (buff 32))
+    (reporter principal)
+    (start-time uint)
+    (end-time uint)
+    (scoring-mode uint)
+  )
   (begin
-    (unwrap! (create-campaign metadata-hash reporter start-time end-time) (ok false))
+    (unwrap! (create-campaign metadata-hash reporter start-time end-time scoring-mode) (ok false))
     (ok true)
   )
 )
@@ -32,9 +38,9 @@
 )
 
 ;; Property: Match creation
-(define-public (test-create-match-fuzz (campaign-id uint) (metadata (string-ascii 200)))
+(define-public (test-create-match-fuzz (campaign-id uint) (metadata-hash (buff 32)))
   (begin
-    (unwrap! (create-match campaign-id metadata) (ok false))
+    (unwrap! (create-match campaign-id metadata-hash) (ok false))
     (ok true)
   )
 )
@@ -123,7 +129,7 @@
 (define-public (prop-pause-halting (paused bool))
   (begin
     (try! (set-paused paused))
-    (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender u100 u200)))
+    (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender u100 u200 u0)))
       (if paused
         (asserts! (is-eq res (err ERR-PAUSED)) (err u1001))
         (asserts! (is-ok res) (err u1002))
@@ -180,7 +186,7 @@
 
 ;; Edge: Invalid campaign times must fail
 (define-public (test-campaign-invalid-times-edge (start-uint uint))
-  (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender start-uint start-uint)))
+  (let ((res (create-campaign 0x0101010101010101010101010101010101010101010101010101010101010101 tx-sender start-uint start-uint u0)))
     (asserts! (is-err res) (err u961))
     (ok true)
   )
