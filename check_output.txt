@@ -1,0 +1,7 @@
+error: unexpected argument '--no-dashboard' found
+
+  tip: to pass '--no-dashboard' as a value, use '-- --no-dashboard'
+
+Usage: clarinet check [OPTIONS] [FILE]
+
+For more information, try '--help'.

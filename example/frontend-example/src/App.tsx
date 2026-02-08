@@ -8,7 +8,7 @@ import { Trophy, MousePointer2, Save, Swords, User as UserIcon, LogOut } from 'l
 import { userSession, authenticate, logout, network } from './stacks';
 
 const CLICK_GAME_CONTRACT = 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.click-game';
-const ROXY_SDK_CONTRACT = 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Roxy-SDK';
+const ROXY_SDK_CONTRACT = 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Roxy';
 
 function App() {
   const { doContractCall } = useConnect();
@@ -42,21 +42,29 @@ function App() {
       onFinish: (data: any) => {
         console.log('Transaction sent:', data);
       },
+      onCancel: () => console.log('Transaction cancelled'),
     });
   };
 
   const syncScore = async () => {
     if (!userData) return;
     setIsSyncing(true);
+
+    // Addresses for trait arguments
+    const sdkAddress = ROXY_SDK_CONTRACT.split('.')[0];
+    const sdkName = ROXY_SDK_CONTRACT.split('.')[1];
+    const gameAddress = CLICK_GAME_CONTRACT.split('.')[0];
+    const gameName = CLICK_GAME_CONTRACT.split('.')[1];
+
     await doContractCall({
-      contractAddress: CLICK_GAME_CONTRACT.split('.')[0],
-      contractName: CLICK_GAME_CONTRACT.split('.')[1],
+      contractAddress: gameAddress,
+      contractName: gameName,
       functionName: 'sdk-sync-score',
       functionArgs: [
-        Cl.contractPrincipal(ROXY_SDK_CONTRACT.split('.')[0], ROXY_SDK_CONTRACT.split('.')[1]),
+        Cl.contractPrincipal(sdkAddress, sdkName),
         Cl.uint(campaignId),
         Cl.standardPrincipal(userData.profile.stxAddress.testnet || userData.profile.stxAddress.mainnet),
-        Cl.contractPrincipal(CLICK_GAME_CONTRACT.split('.')[0], CLICK_GAME_CONTRACT.split('.')[1])
+        Cl.contractPrincipal(gameAddress, gameName)
       ],
       network,
       postConditionMode: PostConditionMode.Allow,
@@ -66,16 +74,31 @@ function App() {
   };
 
   const setUsername = async (name: string) => {
+    if (!userData) return;
+
+    const sdkAddress = ROXY_SDK_CONTRACT.split('.')[0];
+    const sdkName = ROXY_SDK_CONTRACT.split('.')[1];
+    const gameAddress = CLICK_GAME_CONTRACT.split('.')[0];
+    const gameName = CLICK_GAME_CONTRACT.split('.')[1];
+
+    console.log('Setting username:', name);
+    console.log('Using SDK:', sdkAddress, sdkName);
+    console.log('Using Game:', gameAddress, gameName);
+
     await doContractCall({
-      contractAddress: CLICK_GAME_CONTRACT.split('.')[0],
-      contractName: CLICK_GAME_CONTRACT.split('.')[1],
+      contractAddress: gameAddress,
+      contractName: gameName,
       functionName: 'sdk-set-username',
       functionArgs: [
-        Cl.contractPrincipal(ROXY_SDK_CONTRACT.split('.')[0], ROXY_SDK_CONTRACT.split('.')[1]),
+        Cl.contractPrincipal(sdkAddress, sdkName),
         Cl.stringAscii(name)
       ],
       network,
       postConditionMode: PostConditionMode.Allow,
+      onFinish: (data: any) => {
+        console.log('Set Username Transaction sent:', data);
+      },
+      onCancel: () => console.log('Transaction cancelled'),
     });
   };
 

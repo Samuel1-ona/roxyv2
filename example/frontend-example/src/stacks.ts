@@ -1,10 +1,10 @@
 import { AppConfig, UserSession, showConnect } from '@stacks/connect';
-import { STACKS_MOCKNET } from '@stacks/network';
+import { STACKS_TESTNET } from '@stacks/network';
 
 const appConfig = new AppConfig(['store_write', 'publish_data']);
 export const userSession = new UserSession({ appConfig });
 
-export const network = STACKS_MOCKNET;
+export const network = STACKS_TESTNET;
 
 export const authenticate = () => {
     showConnect({

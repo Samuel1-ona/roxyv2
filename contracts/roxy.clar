@@ -8,6 +8,7 @@
 ;; ============================================================================
 
 (use-trait roxy-game-trait .roxy-trait.roxy-game-trait)
+(impl-trait .roxy-trait.roxy-sdk-trait)
 
 ;; ============================================================================
 ;; CONSTANTS & ERRORS
@@ -936,7 +937,7 @@
               reward: reward,
             })
             (try! (as-contract (stx-transfer? reward tx-sender recipient)))
-            (ok reward)
+            (ok true)
           )
         )
         (let (
@@ -963,7 +964,7 @@
               reward: reward,
             })
             (try! (as-contract (stx-transfer? reward tx-sender recipient)))
-            (ok reward)
+            (ok true)
           )
         )
       )
