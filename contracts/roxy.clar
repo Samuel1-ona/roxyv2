@@ -64,7 +64,16 @@
     end-time: uint,
     status: (string-ascii 20),
     winner: (optional principal),
+    scoring-mode: uint, ;; 0: Cumulative, 1: High Score, 2: Low Score
   }
+)
+
+(define-map player-states
+  {
+    campaign-id: uint,
+    user: principal,
+  }
+  (buff 32)
 )
 
 (define-map campaign-participants
@@ -128,11 +137,13 @@
 ;; @param reporter: Principal authorized to sync scores and resolve matches
 ;; @param start-time: Unix timestamp (block height or seconds)
 ;; @param end-time: Unix timestamp (must be > start-time)
+;; @param scoring-mode: 0: Cumulative, 1: High Score, 2: Low Score
 (define-public (create-campaign
     (metadata-hash (buff 32))
     (reporter principal)
     (start-time uint)
     (end-time uint)
+    (scoring-mode uint)
   )
   (let (
       (campaign-id (var-get next-campaign-id))
@@ -142,6 +153,7 @@
     (asserts! (> end-time start-time) ERR-INVALID-TIME)
     (asserts! (is-standard reporter) ERR-UNAUTHORIZED)
     (asserts! (> (len metadata-hash) u0) ERR-INVALID-METADATA)
+    (asserts! (<= scoring-mode u2) ERR-INVALID-AMOUNT)
 
     ;; Pay creation fee to protocol treasury
     (try! (stx-transfer? creation-fee tx-sender (as-contract tx-sender)))
@@ -153,6 +165,7 @@
       creator: tx-sender,
       reporter: reporter,
       fee: creation-fee,
+      scoring-mode: scoring-mode,
     })
 
     (map-set campaigns campaign-id {
@@ -164,6 +177,7 @@
       end-time: end-time,
       status: "open",
       winner: none,
+      scoring-mode: scoring-mode,
     })
 
     (var-set next-campaign-id (+ campaign-id u1))
@@ -280,6 +294,73 @@
   )
 )
 
+;; @desc Managed onboarding: Allows reporter to add a player to a campaign.
+;; @param campaign-id: ID of the campaign
+;; @param player: Principal of the player to onboard
+;; @param referrer: Optional referrer principal
+(define-public (onboard-player
+    (campaign-id uint)
+    (player principal)
+    (referrer (optional principal))
+  )
+  (let (
+      (campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND))
+      (fee (var-get stx-per-usd))
+    )
+    (asserts! (not (var-get protocol-paused)) ERR-PAUSED)
+    (asserts! (is-standard player) ERR-UNAUTHORIZED)
+    ;; Only authorized reporter can onboard players
+    (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+    (asserts!
+      (is-none (map-get? campaign-participants {
+        campaign-id: campaign-id,
+        user: player,
+      }))
+      ERR-ALREADY-PARTICIPATED
+    )
+
+    ;; Reporter pays the join fee
+    (try! (stx-transfer? fee tx-sender (as-contract tx-sender)))
+
+    (let (
+        (referral-amount (/ fee u10))
+        (pool-addition (match referrer
+          ref (if (not (is-eq ref player))
+            (begin
+              (try! (as-contract (stx-transfer? referral-amount tx-sender ref)))
+              (map-set referrals {
+                campaign-id: campaign-id,
+                user: player,
+              }
+                ref
+              )
+              (- fee referral-amount)
+            )
+            fee
+          )
+          fee
+        ))
+      )
+      (print {
+        action: "onboard-player",
+        campaign-id: campaign-id,
+        player: player,
+        reporter: tx-sender,
+        pool-addition: pool-addition,
+      })
+      (map-set campaigns campaign-id
+        (merge campaign { prize-pool: (+ (get prize-pool campaign) pool-addition) })
+      )
+      (ok (map-set campaign-participants {
+        campaign-id: campaign-id,
+        user: player,
+      }
+        true
+      ))
+    )
+  )
+)
+
 ;; @desc Syncs a player's score from an external game contract.
 ;; @param campaign-id: ID of the campaign
 ;; @param player: Principal of the player
@@ -295,21 +376,165 @@
     )
     (asserts! (is-standard player) ERR-UNAUTHORIZED)
 
-    (let ((score (try! (contract-call? game-contract get-player-score campaign-id player))))
-      (print {
-        action: "sync-score",
-        campaign-id: campaign-id,
-        player: player,
-        score: score,
-      })
-      (map-set leaderboard {
-        campaign-id: campaign-id,
-        user: player,
-      }
-        score
+    ;; Time Gating
+    (asserts! (>= stacks-block-height (get start-time campaign)) ERR-INVALID-TIME)
+    (asserts! (<= stacks-block-height (get end-time campaign)) ERR-INVALID-TIME)
+
+    (let ((new-score (try! (contract-call? game-contract get-player-score campaign-id player))))
+      (let (
+          (mode (get scoring-mode campaign))
+          (current-score (default-to u0
+            (map-get? leaderboard {
+              campaign-id: campaign-id,
+              user: player,
+            })
+          ))
+          (final-score (if (is-eq mode u0) ;; Cumulative
+            (+ current-score new-score)
+            (if (is-eq mode u1) ;; High Score
+              (if (> new-score current-score)
+                new-score
+                current-score
+              )
+              (if (is-eq mode u2) ;; Low Score (e.g. Speedrun)
+                (if (or (is-eq current-score u0) (< new-score current-score))
+                  new-score
+                  current-score
+                )
+                current-score
+              )
+            )
+          ))
+        )
+        (print {
+          action: "sync-score",
+          campaign-id: campaign-id,
+          player: player,
+          new-score: new-score,
+          final-score: final-score,
+          mode: mode,
+        })
+        (map-set leaderboard {
+          campaign-id: campaign-id,
+          user: player,
+        }
+          final-score
+        )
+        (ok final-score)
       )
-      (ok score)
     )
+  )
+)
+
+;; @desc Batch syncs multiple player scores. Gas efficient.
+;; @param updates: List of campaign/player/score triples
+;; @param game-contract: Contract conforming to roxy-game-trait
+(define-public (sync-scores-batch
+    (updates (list 50 {
+      campaign-id: uint,
+      player: principal,
+      score: uint,
+    }))
+    (game-contract <roxy-game-trait>)
+  )
+  (begin
+    ;; Verify caller is the authorized reporter for the first update in the batch
+    ;; Interface symmetry: game-contract is passed but not used for push authorization
+    (let ((first-update (unwrap! (element-at updates u0) (ok (list)))))
+      (let ((campaign (unwrap! (map-get? campaigns (get campaign-id first-update))
+          ERR-NOT-FOUND
+        )))
+        (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+        (ok (map sync-score-private-helper updates))
+      )
+    )
+  )
+)
+
+;; Helper for batch sync (private)
+(define-private (sync-score-private-helper (update {
+  campaign-id: uint,
+  player: principal,
+  score: uint,
+}))
+  (let (
+      (campaign-id (get campaign-id update))
+      (player (get player update))
+      (new-score (get score update))
+    )
+    (match (map-get? campaigns campaign-id)
+      campaign (if (is-eq tx-sender (get reporter campaign))
+        (let (
+            (mode (get scoring-mode campaign))
+            (current-score (default-to u0
+              (map-get? leaderboard {
+                campaign-id: campaign-id,
+                user: player,
+              })
+            ))
+            (within-time (and (>= stacks-block-height (get start-time campaign)) (<= stacks-block-height (get end-time campaign))))
+            (final-score (if (not within-time)
+              current-score
+              (if (is-eq mode u0)
+                (+ current-score new-score)
+                (if (is-eq mode u1)
+                  (if (> new-score current-score)
+                    new-score
+                    current-score
+                  )
+                  (if (is-eq mode u2)
+                    (if (or (is-eq current-score u0) (< new-score current-score))
+                      new-score
+                      current-score
+                    )
+                    current-score
+                  )
+                )
+              )
+            ))
+          )
+          (map-set leaderboard {
+            campaign-id: campaign-id,
+            user: player,
+          }
+            final-score
+          )
+          final-score
+        )
+        u0
+      )
+      u0
+    )
+  )
+)
+
+;; @desc Syncs a player's internal state (e.g. progress hash).
+;; @param campaign-id: ID of the campaign
+;; @param player: Principal of the player
+;; @param state-hash: 32-byte hash of game progress
+;; @param game-contract: Contract conforming to roxy-game-trait
+(define-public (sync-player-state
+    (campaign-id uint)
+    (player principal)
+    (state-hash (buff 32))
+    (game-contract <roxy-game-trait>)
+  )
+  (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
+    (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+    (asserts! (is-standard player) ERR-UNAUTHORIZED)
+    (asserts! (> (len state-hash) u0) ERR-INVALID-METADATA)
+    (print {
+      action: "sync-player-state",
+      campaign-id: campaign-id,
+      player: player,
+      state-hash: state-hash,
+    })
+    (ok (map-set player-states {
+      campaign-id: campaign-id,
+      user: player,
+    }
+      state-hash
+    ))
   )
 )
 
@@ -320,6 +545,7 @@
       (old-profile (map-get? user-profiles tx-sender))
       (existing-owner (map-get? usernames username))
     )
+    (asserts! (not (var-get protocol-paused)) ERR-PAUSED)
     (asserts! (> (len username) u0) ERR-INVALID-METADATA)
     ;; Check if username is taken by someone else
     (asserts!
@@ -341,10 +567,56 @@
       user: tx-sender,
       username: username,
     })
-
-    ;; Update both maps
     (map-set usernames username tx-sender)
     (ok (map-set user-profiles tx-sender { username: username }))
+  )
+)
+
+;; @desc Managed identity: Allows reporter to set a username for their player.
+;; @param player: Principal of the player
+;; @param username: Desired gamertag
+;; @param campaign-id: ID of the campaign for authorization
+(define-public (set-player-username
+    (player principal)
+    (username (string-ascii 50))
+    (campaign-id uint)
+  )
+  (let (
+      (campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND))
+      (old-profile (map-get? user-profiles player))
+      (existing-owner (map-get? usernames username))
+    )
+    (asserts! (not (var-get protocol-paused)) ERR-PAUSED)
+    (asserts! (is-standard player) ERR-UNAUTHORIZED)
+    (asserts! (> (len username) u0) ERR-INVALID-METADATA)
+
+    ;; Authorization: Reporter of the specified campaign can manage their players.
+    (asserts!
+      (or (is-eq tx-sender (var-get admin)) (is-eq tx-sender (get reporter campaign)))
+      ERR-UNAUTHORIZED
+    )
+
+    (asserts!
+      (or (is-none existing-owner) (is-eq (unwrap-panic existing-owner) player))
+      ERR-USERNAME-TAKEN
+    )
+
+    (match old-profile
+      profile (if (not (is-eq (get username profile) username))
+        (map-delete usernames (get username profile))
+        true
+      )
+      true
+    )
+
+    (print {
+      action: "set-player-username",
+      player: player,
+      reporter: tx-sender,
+      username: username,
+    })
+    (map-set usernames username player)
+    (ok (map-set user-profiles player { username: username }))
   )
 )
 
@@ -461,6 +733,80 @@
       )
     )
     (ok true)
+  )
+)
+
+;; @desc Managed prediction: Allows reporter to place a stake on behalf of a player.
+;; @param event-id: ID of the match
+;; @param amount: micro-STX to stake
+;; @param is-yes: Vote direction
+;; @param player: The player receiving the stake position
+(define-public (stake-for
+    (event-id uint)
+    (amount uint)
+    (is-yes bool)
+    (player principal)
+  )
+  (let ((event (unwrap! (map-get? events event-id) ERR-NOT-FOUND)))
+    (let ((campaign (unwrap! (map-get? campaigns (get campaign-id event)) ERR-NOT-FOUND)))
+      (asserts! (not (var-get protocol-paused)) ERR-PAUSED)
+      (asserts! (is-standard player) ERR-UNAUTHORIZED)
+      ;; Only authorized reporter can stake for their players
+      (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+      (asserts! (is-eq (get status event) "open") ERR-EVENT-NOT-OPEN)
+      (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+
+      ;; Reporter pays the stake amount
+      (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
+
+      (print {
+        action: "stake-for",
+        event-id: event-id,
+        player: player,
+        reporter: tx-sender,
+        amount: amount,
+        is-yes: is-yes,
+      })
+
+      (if is-yes
+        (begin
+          (map-set events event-id
+            (merge event { yes-pool: (+ (get yes-pool event) amount) })
+          )
+          (let ((current-stake (default-to u0
+              (map-get? yes-stakes {
+                event-id: event-id,
+                user: player,
+              })
+            )))
+            (ok (map-set yes-stakes {
+              event-id: event-id,
+              user: player,
+            }
+              (+ current-stake amount)
+            ))
+          )
+        )
+        (begin
+          (map-set events event-id
+            (merge event { no-pool: (+ (get no-pool event) amount) })
+          )
+          (let ((current-stake (default-to u0
+              (map-get? no-stakes {
+                event-id: event-id,
+                user: player,
+              })
+            )))
+            (ok (map-set no-stakes {
+              event-id: event-id,
+              user: player,
+            }
+              (+ current-stake amount)
+            ))
+          )
+        )
+      )
+    )
   )
 )
 
@@ -625,6 +971,83 @@
   )
 )
 
+;; @desc Managed payout: Allows reporter to trigger reward payout for a winner.
+(define-public (claim-reward-for
+    (event-id uint)
+    (player principal)
+  )
+  (let ((event (unwrap! (map-get? events event-id) ERR-NOT-FOUND)))
+    (let ((campaign (unwrap-panic (map-get? campaigns (get campaign-id event)))))
+      (asserts! (is-standard player) ERR-UNAUTHORIZED)
+      (asserts! (is-eq (get status event) "resolved") ERR-EVENT-CLOSED)
+      ;; Onlyauthorized reporter can trigger payout
+      (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+
+      (let (
+          (is-yes-winner (unwrap! (get winner event) ERR-NOT-FOUND))
+          (yes-pool (get yes-pool event))
+          (no-pool (get no-pool event))
+          (total-pool (+ yes-pool no-pool))
+        )
+        (if is-yes-winner
+          (let (
+              (user-stake (unwrap!
+                (map-get? yes-stakes {
+                  event-id: event-id,
+                  user: player,
+                })
+                ERR-NOT-FOUND
+              ))
+              (reward (/ (* user-stake total-pool) yes-pool))
+            )
+            (map-set yes-stakes {
+              event-id: event-id,
+              user: player,
+            }
+              u0
+            )
+            (print {
+              action: "claim-reward-for",
+              event-id: event-id,
+              player: player,
+              reporter: tx-sender,
+              reward: reward,
+            })
+            (try! (as-contract (stx-transfer? reward tx-sender player)))
+            (ok reward)
+          )
+          (let (
+              (user-stake (unwrap!
+                (map-get? no-stakes {
+                  event-id: event-id,
+                  user: player,
+                })
+                ERR-NOT-FOUND
+              ))
+              (reward (/ (* user-stake total-pool) no-pool))
+            )
+            (map-set no-stakes {
+              event-id: event-id,
+              user: player,
+            }
+              u0
+            )
+            (print {
+              action: "claim-reward-for",
+              event-id: event-id,
+              player: player,
+              reporter: tx-sender,
+              reward: reward,
+            })
+            (try! (as-contract (stx-transfer? reward tx-sender player)))
+            (ok reward)
+          )
+        )
+      )
+    )
+  )
+)
+
 ;; @desc Sets the winner of a campaign. Only the reporter can call this.
 ;; @param campaign-id: ID of the campaign
 ;; @param winner: Principal of the winner
@@ -674,6 +1097,36 @@
   )
 )
 
+;; @desc Managed payout: Allows reporter to trigger prize payout for campaign winner.
+(define-public (claim-campaign-prize-for
+    (campaign-id uint)
+    (player principal)
+  )
+  (let ((campaign (unwrap! (map-get? campaigns campaign-id) ERR-NOT-FOUND)))
+    (let (
+        (winner (unwrap! (get winner campaign) ERR-UNAUTHORIZED))
+        (prize (get prize-pool campaign))
+      )
+      (asserts! (is-standard player) ERR-UNAUTHORIZED)
+      ;; Only authorized reporter can trigger claim
+      (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+      (asserts! (is-eq player winner) ERR-UNAUTHORIZED)
+      (asserts! (> prize u0) ERR-INSUFFICIENT-FUNDS)
+
+      (map-set campaigns campaign-id (merge campaign { prize-pool: u0 }))
+      (print {
+        action: "claim-campaign-prize-for",
+        campaign-id: campaign-id,
+        player: player,
+        reporter: tx-sender,
+        prize: prize,
+      })
+      (try! (as-contract (stx-transfer? prize tx-sender player)))
+      (ok prize)
+    )
+  )
+)
+
 ;; ============================================================================
 ;; ADMIN FUNCTIONS
 ;; ============================================================================
@@ -691,6 +1144,60 @@
     })
     (try! (as-contract (stx-transfer? amount tx-sender (var-get admin))))
     (ok amount)
+  )
+)
+
+;; @desc Managed refund: Allows reporter to trigger refund for a player in a cancelled match.
+(define-public (refund-stake-for
+    (event-id uint)
+    (player principal)
+  )
+  (let ((event (unwrap! (map-get? events event-id) ERR-NOT-FOUND)))
+    (let ((campaign (unwrap! (map-get? campaigns (get campaign-id event)) ERR-NOT-FOUND)))
+      (asserts! (is-standard player) ERR-UNAUTHORIZED)
+      (asserts! (is-eq (get status event) "cancelled") ERR-EVENT-NOT-OPEN)
+      ;; Only authorized reporter can trigger refund
+      (asserts! (is-eq tx-sender (get reporter campaign)) ERR-UNAUTHORIZED)
+
+      (let (
+          (yes-staked (default-to u0
+            (map-get? yes-stakes {
+              event-id: event-id,
+              user: player,
+            })
+          ))
+          (no-staked (default-to u0
+            (map-get? no-stakes {
+              event-id: event-id,
+              user: player,
+            })
+          ))
+          (total-staked (+ yes-staked no-staked))
+        )
+        (asserts! (> total-staked u0) ERR-NOT-FOUND)
+        (map-set yes-stakes {
+          event-id: event-id,
+          user: player,
+        }
+          u0
+        )
+        (map-set no-stakes {
+          event-id: event-id,
+          user: player,
+        }
+          u0
+        )
+        (print {
+          action: "refund-stake-for",
+          event-id: event-id,
+          player: player,
+          reporter: tx-sender,
+          amount: total-staked,
+        })
+        (try! (as-contract (stx-transfer? total-staked tx-sender player)))
+        (ok total-staked)
+      )
+    )
   )
 )
 
@@ -873,4 +1380,14 @@
 
 (define-read-only (get-user-by-username (username (string-ascii 50)))
   (ok (map-get? usernames username))
+)
+
+(define-read-only (get-player-state
+    (campaign-id uint)
+    (player principal)
+  )
+  (ok (map-get? player-states {
+    campaign-id: campaign-id,
+    user: player,
+  }))
 )
