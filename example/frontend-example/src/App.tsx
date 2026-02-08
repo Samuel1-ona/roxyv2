@@ -181,7 +181,7 @@ function App() {
           </button>
           <div className="text-center">
             <div className="text-5xl font-black text-white mb-2">{score}</div>
-            <div className="text-text-muted uppercase tracking-[0.2em] font-semibold text-sm">Total Power</div>
+            <div className="text-text-muted uppercase tracking-arena font-semibold text-sm">Total Power</div>
           </div>
         </div>
 
