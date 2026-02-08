@@ -1,0 +1,25 @@
+[project]
+name = 'game'
+description = ''
+authors = []
+telemetry = true
+cache_dir = './.cache'
+
+[[project.requirements]]
+contract_id = 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.roxy-trait'
+[contracts.game-example]
+path = 'contracts/game-example.clar'
+clarity_version = 3
+epoch = 'latest'
+[repl.analysis]
+passes = ['check_checker']
+
+[repl.analysis.check_checker]
+strict = false
+trusted_sender = false
+trusted_caller = false
+callee_filter = false
+
+[repl.remote_data]
+enabled = false
+api_url = 'https://api.hiro.so'
