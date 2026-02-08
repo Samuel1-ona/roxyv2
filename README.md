@@ -1,150 +1,133 @@
-# Roxy - Bitcoin L2 Prediction Market Game
+# Roxy - Bitcoin L2 Gaming & Prediction SDK
 
 ## Overview
 
-Roxy is a decentralized prediction market platform built on Bitcoin Layer 2 (Stacks blockchain) that enables users to make predictions on various outcomes, accumulate points through successful predictions, and participate in a peer-to-peer marketplace for trading points. The platform combines individual prediction capabilities with collaborative guild-based prediction systems, creating a competitive environment with comprehensive leaderboards.
+Roxy is a decentralized gaming SDK built on Bitcoin Layer 2 (Stacks) that enables game developers to integrate **prediction markets**, **staking**, and **cross-game identity** directly into their gameplay loop. 
 
+Unlike traditional prediction markets that are standalone apps, Roxy brings the market *to the game*. Players can stake on their own matches, compete in high-stakes arenas, and carry their reputation across the entire ecosystem.
 
-![Roxy Logo](https://github.com/user-attachments/assets/f57fe362-4e7c-40d6-977d-cd521fec1452)
+![Roxy SDK](https://github.com/user-attachments/assets/f57fe362-4e7c-40d6-977d-cd521fec1452)
 
-## Features
+---
 
-###  Prediction Markets
+## Core Features (v2.3.0)
 
-- **Binary Event System**: Create and participate in YES/NO prediction events covering sports, price movements, and other outcomes
-- **Proportional Rewards**: Winners receive rewards proportional to their stake in the winning pool
-- **Admin-Controlled Events**: Secure event creation and resolution managed by contract administrators
-- **Multi-Event Support**: Simultaneous participation across multiple prediction events
+### 1. Prediction Markets & Staking
+- **In-Game Wagers**: Allow players to stake STX on the outcome of their own matches or tournaments.
+- **Binary Outcomes**: Simple YES/NO pools for clear resolution (e.g., "Will Player X win Match #42?").
+- **Proportional Payouts**: Winners share the losing pool's stake, minus protocol fees.
+- **Slippage-Free**: Peer-to-pool model ensures liquidity and fair odds.
 
-###  Collaborative Guild System
+### 2. Campaign Management
+- **Developer-Controlled Contexts**: Create "Campaigns" (seasons, tournaments, or specific game modes) to isolate scoring and leaderboards.
+- **Custom configurations**: Set scoring modes (Cumulative, High Score, Low Score) and duration.
+- **Sponsored Prize Pools**: Deposit STX into a campaign to reward top performers automatically.
 
-- **Guild Creation**: Users can form prediction guilds to pool resources and strategies
-- **Shared Staking**: Guild members contribute points to a collective pool for larger prediction stakes
-- **Collective Rewards**: Winnings are distributed among guild members based on contributions
-- **Guild Leaderboards**: Track and compare guild performance metrics across the platform
+### 3. Gamer Identity & Reputation
+- **Unified Profile**: A single on-chain username and stats profile across all Roxy-integrated games.
+- **Verifiable History**: Wins, losses, and total volume are tracked on-chain, creating a trustless "skill rating".
+- **Sybil Resistance**: Cost-to-attack ensures leaderboards remain fair.
 
-###  Point Marketplace
-
-- **Point Trading**: Buy and sell earned points using STX tokens
-- **Partial Purchases**: Support for buying portions of listed point packages
-- **Protocol Fees**: 2% transaction fee automatically collected by the protocol
-- **Listing Requirements**: 
-  - Minimum 10,000 earned points required to create listings
-  - 10 STX listing fee per marketplace listing
-- **Secure Transactions**: All trades executed on-chain with automatic point transfers
-
-###  Leaderboard & Statistics
-
-- **Individual Metrics**: Track personal performance including total predictions, wins, losses, and win rate
-- **Guild Rankings**: Compare guild performance across multiple metrics
-- **Points Tracking**: Monitor total points earned and current balances
-- **Real-time Updates**: On-chain statistics updated with each transaction
-
-###  Points & Rewards System
-
-- **Welcome Bonus**: New users receive 1,000 starting points upon registration
-- **Earning Mechanism**: Accumulate points by correctly predicting event outcomes
-- **Reward Distribution**: Proportional payout system ensures fair distribution based on stake size
-- **Earned Points Tracking**: Separate tracking of earned points for marketplace eligibility
+---
 
 ## Architecture
 
-### Data Storage
+The Roxy ecosystem is composed of three main layers:
 
-#### User Management
-- **`user-points`**: Total point balance for each registered user
-- **`earned-points`**: Points accumulated from winning predictions (used for marketplace selling threshold)
-- **`user-names`**: Username registry for user identification
-- **`user-stats`**: Comprehensive statistics including prediction count, wins, losses, win rate, and total points earned
+### 1. The Core Contract (`roxy.clar`)
+The heart of the protocol. It handles:
+- Campaign creation and configuration.
+- Staking logic and pool management.
+- User identity and global stats.
+- Payout calculations and treasury management.
 
-#### Event Management
-- **`events`**: Complete event registry containing pool sizes, status (open/closed/resolved), winner information, and metadata
-- **`yes-stakes`**: Individual user stakes on YES outcomes per event
-- **`no-stakes`**: Individual user stakes on NO outcomes per event
+**Testnet Address**: `STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Roxy`
 
-#### Guild System
-- **`guilds`**: Guild information including creator, name, total pooled points, and member count
-- **`guild-members`**: Membership registry tracking which users belong to which guilds
-- **`guild-deposits`**: Individual user contributions to guild point pools
-- **`guild-yes-stakes`**: Guild collective stakes on YES outcomes per event
-- **`guild-no-stakes`**: Guild collective stakes on NO outcomes per event
-- **`guild-stats`**: Guild-level performance metrics for leaderboard rankings
+### 2. The SDK Trait (`roxy-sdk-trait`)
+A standard interface that defines how games communicate with the core contract. This ensures forward compatibility and easy integration for developers.
 
-#### Marketplace
-- **`listings`**: Active and inactive point sale listings with seller information, point amounts, STX prices, and status
-- **`protocol-treasury`**: Accumulated protocol fees from marketplace transactions and listing fees
+**Testnet Address**: `STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.roxy-trait`
 
-#### Transaction Logging
-- **`transaction-logs`**: Comprehensive on-chain event log for frontend integration, tracking all major actions (registrations, staking, claims, marketplace transactions, etc.)
+### 3. The Game Wrapper (`game-example.clar`)
+An example implementation showing how to wrap SDK calls within your game logic. This pattern allows games to abstract away the complexity of DeFi interactions from their players.
+
+---
+
+## Integration Guide
+
+### Prerequisites
+- **Clarinet**: For local development and testing.
+- **Stacks.js**: For frontend wallet connection.
+
+### Step 1: Implement the Trait
+Your game contract should implicitly or explicitly interact with `roxy-sdk-trait`.
+
+```clarity
+(use-trait roxy-sdk-trait 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.roxy-trait.roxy-sdk-trait)
+```
+
+### Step 2: Create a Campaign
+Initialize your game mode (Campaign) to start tracking scores.
+
+```clarity
+(contract-call? 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Roxy create-campaign 
+    0x00... (metadata-hash) 
+    tx-sender (reporter) 
+    u100 (start-height) 
+    u1000 (end-height) 
+    u0 (scoring-mode: cumulative)
+)
+```
+
+### Step 3: Trigger SDK Actions
+Call SDK functions from your game client or contract wrapper.
+
+**Example: Staking on a Match**
+```clarity
+(contract-call? 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Roxy stake 
+    event-id 
+    u1000000 ;; 1 STX 
+    true ;; VOTE YES
+)
+```
+
+---
 
 ## Key Functions
 
-### User Functions
-- `register(username)`: Register a new user and receive starting points
-- `stake-yes(event-id, amount)`: Place a YES prediction stake
-- `stake-no(event-id, amount)`: Place a NO prediction stake
-- `claim(event-id)`: Claim rewards from resolved events
+### Game/Campaign Management
+- `create-campaign`: Launch a new tracking context.
+- `create-match`: Open a betting pool for a specific game event.
+- `resolve-match`: (Reporter only) Settle the outcome and enable payouts.
 
-### Marketplace Functions
-- `create-listing(points, price-stx)`: List points for sale (requires 10,000+ earned points)
-- `buy-listing(listing-id, points-to-buy)`: Purchase points from marketplace
-- `cancel-listing(listing-id)`: Cancel an active listing
+### Player Actions
+- `set-username`: Claim a unique identity.
+- `stake`: Place a bet on an active match.
+- `claim-reward`: Withdraw winnings from a resolved match.
+- `sync-score`: Post game results to the campaign leaderboard.
 
-### Guild Functions
-- `create-guild(guild-id, name)`: Create a new prediction guild
-- `join-guild(guild-id)`: Join an existing guild
-- `deposit-to-guild(guild-id, amount)`: Contribute points to guild pool
-- `guild-stake-yes(guild-id, event-id, amount)`: Place guild YES stake
-- `guild-stake-no(guild-id, event-id, amount)`: Place guild NO stake
-- `guild-claim(guild-id, event-id)`: Claim guild rewards
+### Read-Only
+- `get-campaign`: View campaign details and total prize pool.
+- `get-event`: Check odds/pools for a specific match.
+- `get-user-profile`: Retrieve a player's alias and stats.
 
-### Admin Functions
-- `create-event(event-id, metadata)`: Create new prediction events
-- `resolve-event(event-id, winner)`: Resolve events and set winners
-- `withdraw-protocol-fees(amount)`: Withdraw accumulated protocol fees
+---
 
-### Read-Only Functions
-- `get-user-points(user)`: Query user point balance
-- `get-earned-points(user)`: Query earned points (for marketplace eligibility)
-- `can-sell(user)`: Check if user can create marketplace listings
-- `get-event(event-id)`: Get event details and status
-- `get-listing(listing-id)`: Get marketplace listing information
-- `get-protocol-treasury()`: Query protocol treasury balance
-- `get-user-stats(user)`: Get user leaderboard statistics
-- `get-guild-stats(guild-id)`: Get guild leaderboard statistics
+## Development & Testing
 
-## Constants
+### Local Setup
+1. Clone the repo.
+2. `clarinet integrate` to spin up a local Devnet.
+3. Deploy contracts (automatically handled by Clarinet).
 
-- **Starting Points**: 1,000 points for new users
-- **Minimum Earned for Selling**: 10,000 earned points required to create marketplace listings
-- **Listing Fee**: 10 STX per marketplace listing
-- **Protocol Fee**: 2% (200 basis points) on all marketplace transactions
+### Frontend Example
+Check `example/frontend-example` for a complete Vite + React implementation showing:
+- Wallet Connection
+- Profile Management
+- Game Loop Integration
+- Transaction Broadcasting
 
-## Getting Started
+---
 
-### Prerequisites
-- Stacks wallet (Hiro Wallet recommended)
-- STX tokens for transaction fees and marketplace purchases
-- Clarinet development environment (for local testing)
-
-
-### Usage
-
-1. **Register**: Call `register(username)` to create an account and receive 1,000 starting points
-2. **Participate**: Stake points on prediction events using `stake-yes` or `stake-no`
-3. **Claim Rewards**: After events are resolved, use `claim` to collect your winnings
-4. **Trade Points**: Once you've earned 10,000+ points, create listings on the marketplace
-5. **Join Guilds**: Form or join guilds for collaborative predictions and shared rewards
-
-## Protocol Fees
-
-The protocol collects fees to support development, rewards, and governance:
-- **Marketplace Fee**: 2% of each point sale transaction
-- **Listing Fee**: 10 STX per marketplace listing creation
-- **Treasury Management**: Admin can withdraw accumulated fees via `withdraw-protocol-fees`
-
-
-
-
-
-
+## License
+MIT

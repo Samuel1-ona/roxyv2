@@ -1,17 +1,14 @@
 [project]
-name = 'Roxy'
+name = 'game'
 description = ''
 authors = []
 telemetry = true
 cache_dir = './.cache'
-requirements = []
-[contracts.Roxy]
-path = 'contracts/roxy.clar'
-clarity_version = 3
-epoch = 'latest'
 
-[contracts.roxy-trait]
-path = 'contracts/roxy-trait.clar'
+[[project.requirements]]
+contract_id = 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.roxy-trait'
+[contracts.game-example]
+path = 'contracts/game-example.clar'
 clarity_version = 3
 epoch = 'latest'
 [repl.analysis]

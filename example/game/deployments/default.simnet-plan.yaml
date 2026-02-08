@@ -58,18 +58,19 @@ genesis:
     - pox-4
     - signers
     - signers-voting
+    - costs-4
 plan:
   batches:
     - id: 0
       transactions:
         - emulated-contract-publish:
             contract-name: roxy-trait
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/roxy-trait.clar
+            emulated-sender: STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS
+            path: "./.cache/requirements/STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.roxy-trait.clar"
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: roxy
+            contract-name: game-example
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/roxy.clar
+            path: contracts/game-example.clar
             clarity-version: 3
       epoch: "3.2"
