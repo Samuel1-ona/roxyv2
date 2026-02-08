@@ -5,16 +5,15 @@ authors = []
 telemetry = true
 cache_dir = './.cache'
 requirements = []
-[contracts.roxy-trait]
-path = 'contracts/roxy-trait.clar'
-clarity_version = 3
-epoch = 'latest'
-
 [contracts.roxy]
 path = 'contracts/roxy.clar'
 clarity_version = 3
 epoch = 'latest'
-depends_on = ['roxy-trait']
+
+[contracts.roxy-trait]
+path = 'contracts/roxy-trait.clar'
+clarity_version = 3
+epoch = 'latest'
 [repl.analysis]
 passes = ['check_checker']
 

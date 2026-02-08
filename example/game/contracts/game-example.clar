@@ -72,6 +72,7 @@
         (referrer (optional principal))
     )
     (contract-call? sdk join-campaign campaign-id referrer)
+    
 )
 
 ;; Wrapper for testing onboard-player
